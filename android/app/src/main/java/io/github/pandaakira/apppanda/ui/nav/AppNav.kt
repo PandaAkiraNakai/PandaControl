@@ -138,6 +138,9 @@ fun AppNav(app: PandaApp) {
             // Sub-pantallas (accesibles desde Media o Modules)
             composable("media") { MediaScreen(app = app) }
             composable("audio") { AudioScreen(app = app) }
+            composable("browser") {
+                io.github.pandaakira.apppanda.ui.browser.BrowserScreen(app = app)
+            }
             composable("displays") { DisplaysScreen(app = app) }
             composable("apps") { AppsScreen(app = app) }
             composable("games") { GamesScreen(app = app) }

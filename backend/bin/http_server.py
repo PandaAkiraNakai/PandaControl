@@ -393,6 +393,33 @@ class _Handler(BaseHTTPRequestHandler):
             return
         elif path == "/api/v1/ai/state":
             body = self._ai_state()
+        elif path == "/api/v1/browser/tabs":
+            avail = api.browser_cdp_available()
+            body = {
+                "available": avail,
+                "tabs": api.browser_tabs() if avail else [],
+            }
+        elif path == "/api/v1/browser/links":
+            target = (self._parse_qs().get("target") or "").strip()
+            if not target:
+                self._err(400, "falta el parámetro ?target=")
+                self._audit(path, 400)
+                return
+            body = {"target": target, "links": api.browser_links(target)}
+        elif path == "/api/v1/youtube/search":
+            q = (self._parse_qs().get("q") or "").strip()
+            if not q:
+                self._err(400, "falta el parámetro ?q=")
+                self._audit(path, 400)
+                return
+            body = {"query": q, "results": api.youtube_search(q)}
+        elif path == "/api/v1/web/search":
+            q = (self._parse_qs().get("q") or "").strip()
+            if not q:
+                self._err(400, "falta el parámetro ?q=")
+                self._audit(path, 400)
+                return
+            body = {"query": q, "results": api.web_search(q)}
         elif path == "/api/v1/events":
             self._stream_events()
             return
@@ -496,6 +523,96 @@ class _Handler(BaseHTTPRequestHandler):
                 else:
                     result = api.mpris_action(action, player)
                 body = {"player": player, "action": action, "result": result}
+            elif path == "/api/v1/browser/open":
+                data = self._read_json_body()
+                url = (data.get("url") or "").strip()
+                if not url:
+                    self._err(400, "body needs {url: ...}")
+                    self._audit(path, 400)
+                    return
+                result = api.browser_open(url)
+                body = {"url": url, "result": result}
+            elif path == "/api/v1/browser/navigate":
+                data = self._read_json_body()
+                target = (data.get("target") or "").strip()
+                url = (data.get("url") or "").strip()
+                if not target or not url:
+                    self._err(400, "body needs {target, url}")
+                    self._audit(path, 400)
+                    return
+                result = api.browser_navigate(target, url)
+                body = {"target": target, "url": url, "result": result}
+            elif path in (
+                "/api/v1/browser/activate", "/api/v1/browser/close",
+                "/api/v1/browser/reload", "/api/v1/browser/back",
+                "/api/v1/browser/forward",
+            ):
+                data = self._read_json_body()
+                target = (data.get("target") or "").strip()
+                if not target:
+                    self._err(400, "body needs {target: ...}")
+                    self._audit(path, 400)
+                    return
+                fn = {
+                    "/api/v1/browser/activate": api.browser_activate,
+                    "/api/v1/browser/close": api.browser_close,
+                    "/api/v1/browser/reload": api.browser_reload,
+                    "/api/v1/browser/back": api.browser_back,
+                    "/api/v1/browser/forward": api.browser_forward,
+                }[path]
+                result = fn(target)
+                body = {"target": target, "result": result}
+            elif path == "/api/v1/browser/scroll":
+                data = self._read_json_body()
+                target = (data.get("target") or "").strip()
+                direction = (data.get("dir") or "").strip()
+                if not target or not direction:
+                    self._err(400, "body needs {target, dir}")
+                    self._audit(path, 400)
+                    return
+                result = api.browser_scroll(target, direction)
+                body = {"target": target, "dir": direction, "result": result}
+            elif path == "/api/v1/browser/click":
+                data = self._read_json_body()
+                target = (data.get("target") or "").strip()
+                text = (data.get("text") or "").strip()
+                if not target or not text:
+                    self._err(400, "body needs {target, text}")
+                    self._audit(path, 400)
+                    return
+                result = api.browser_click(target, text)
+                body = {"target": target, "result": result}
+            elif path == "/api/v1/browser/click_index":
+                data = self._read_json_body()
+                target = (data.get("target") or "").strip()
+                idx = data.get("idx")
+                if not target or idx is None:
+                    self._err(400, "body needs {target, idx}")
+                    self._audit(path, 400)
+                    return
+                result = api.browser_click_index(target, int(idx))
+                body = {"target": target, "idx": int(idx), "result": result}
+            elif path == "/api/v1/browser/type":
+                data = self._read_json_body()
+                target = (data.get("target") or "").strip()
+                text = data.get("text") or ""
+                submit = str(data.get("submit", "")).lower() in ("true", "1", "yes")
+                if not target or not text:
+                    self._err(400, "body needs {target, text}")
+                    self._audit(path, 400)
+                    return
+                result = api.browser_type(target, text, submit)
+                body = {"target": target, "result": result}
+            elif path == "/api/v1/youtube/play":
+                data = self._read_json_body()
+                vid = (data.get("videoId") or "").strip()
+                target = (data.get("target") or "").strip() or None
+                if not vid:
+                    self._err(400, "body needs {videoId: ...}")
+                    self._audit(path, 400)
+                    return
+                result = api.youtube_play(vid, target)
+                body = {"videoId": vid, "result": result}
             elif path.startswith("/api/v1/apps/") and path.endswith("/launch"):
                 name = path[len("/api/v1/apps/"):-len("/launch")]
                 result = api.execute_app(name, api.ctx.cfg)

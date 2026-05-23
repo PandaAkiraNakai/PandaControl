@@ -1355,6 +1355,7 @@ def main() -> None:
     from http_server import EventBroker, start_http_server
     from sudo_broker import SudoBroker
     from claude_runner import ClaudeRunner
+    import browser
     broker = EventBroker()
     alerts = Alerts(cfg)
     sudo = SudoBroker()
@@ -1412,6 +1413,23 @@ def main() -> None:
             execute_svc=execute_svc,
             execute_app=execute_app,
             execute_apply_updates=execute_apply_updates,
+            browser_cdp_available=browser.cdp_available,
+            browser_tabs=browser.list_tabs,
+            browser_open=browser.open_url,
+            browser_navigate=browser.navigate,
+            browser_activate=browser.activate,
+            browser_close=browser.close_tab,
+            browser_reload=browser.reload,
+            browser_back=browser.go_back,
+            browser_forward=browser.go_forward,
+            browser_scroll=browser.scroll,
+            browser_click=browser.click_text,
+            browser_click_index=browser.click_index,
+            browser_links=browser.page_links,
+            browser_type=browser.type_text,
+            web_search=browser.web_search,
+            youtube_search=browser.youtube_search,
+            youtube_play=browser.youtube_play,
         )
         start_http_server(
             api, broker,

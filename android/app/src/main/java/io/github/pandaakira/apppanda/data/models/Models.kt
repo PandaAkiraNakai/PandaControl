@@ -176,6 +176,60 @@ data class ScreensResponse(
 data class MediaPlayersResponse(val players: List<String>)
 
 @Serializable
+data class BrowserTab(
+    val id: String,
+    val title: String = "",
+    val url: String = "",
+)
+
+@Serializable
+data class BrowserTabsResponse(
+    val available: Boolean = false,
+    val tabs: List<BrowserTab> = emptyList(),
+)
+
+@Serializable
+data class YtVideo(
+    val id: String,
+    val title: String = "",
+    val channel: String = "",
+    val duration: String = "",
+    val views: String = "",
+    val thumbnail: String = "",
+)
+
+@Serializable
+data class YoutubeSearchResponse(
+    val query: String = "",
+    val results: List<YtVideo> = emptyList(),
+)
+
+@Serializable
+data class WebResult(
+    val title: String = "",
+    val url: String = "",
+    val description: String = "",
+)
+
+@Serializable
+data class WebSearchResponse(
+    val query: String = "",
+    val results: List<WebResult> = emptyList(),
+)
+
+@Serializable
+data class PageLink(
+    val idx: Int,
+    val label: String = "",
+)
+
+@Serializable
+data class PageLinksResponse(
+    val target: String = "",
+    val links: List<PageLink> = emptyList(),
+)
+
+@Serializable
 data class MediaStatus(
     val status: String = "?",
     val title: String = "",

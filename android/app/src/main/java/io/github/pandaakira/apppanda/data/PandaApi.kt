@@ -5,6 +5,7 @@ import io.github.pandaakira.apppanda.data.models.AISendResponse
 import io.github.pandaakira.apppanda.data.models.AIStateResponse
 import io.github.pandaakira.apppanda.data.models.AppsResponse
 import io.github.pandaakira.apppanda.data.models.AudioResponse
+import io.github.pandaakira.apppanda.data.models.BrowserTabsResponse
 import io.github.pandaakira.apppanda.data.models.DiskResponse
 import io.github.pandaakira.apppanda.data.models.FileUploadResponse
 import io.github.pandaakira.apppanda.data.models.FilesIndexResponse
@@ -18,6 +19,7 @@ import io.github.pandaakira.apppanda.data.models.MediaStatus
 import io.github.pandaakira.apppanda.data.models.MetricsResponse
 import io.github.pandaakira.apppanda.data.models.NetNeighborsResponse
 import io.github.pandaakira.apppanda.data.models.NetStatus
+import io.github.pandaakira.apppanda.data.models.PageLinksResponse
 import io.github.pandaakira.apppanda.data.models.ProcessesResponse
 import io.github.pandaakira.apppanda.data.models.ScreensResponse
 import io.github.pandaakira.apppanda.data.models.ServicesResponse
@@ -28,6 +30,8 @@ import io.github.pandaakira.apppanda.data.models.UpdatesResponse
 import io.github.pandaakira.apppanda.data.models.VersionResponse
 import io.github.pandaakira.apppanda.data.models.VpsListResponse
 import io.github.pandaakira.apppanda.data.models.VpsSummary
+import io.github.pandaakira.apppanda.data.models.WebSearchResponse
+import io.github.pandaakira.apppanda.data.models.YoutubeSearchResponse
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.cio.CIO
@@ -49,6 +53,7 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.encodeURLParameter
 import io.ktor.utils.io.readUTF8Line
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -143,6 +148,69 @@ class PandaApi(
 
     suspend fun mediaStatus(player: String): MediaStatus =
         client.get(url("/api/v1/media/$player/status")).body()
+
+    // ─── Navegador (Brave vía CDP) ─────────────────────────────────────────
+    suspend fun browserTabs(): BrowserTabsResponse =
+        client.get(url("/api/v1/browser/tabs")).body()
+
+    suspend fun browserOpen(target: String) =
+        action("/api/v1/browser/open", body = mapOf("url" to target))
+
+    suspend fun browserNavigate(target: String, url: String) =
+        action("/api/v1/browser/navigate", body = mapOf("target" to target, "url" to url))
+
+    suspend fun browserActivate(target: String) =
+        action("/api/v1/browser/activate", body = mapOf("target" to target))
+
+    suspend fun browserClose(target: String) =
+        action("/api/v1/browser/close", body = mapOf("target" to target))
+
+    suspend fun browserReload(target: String) =
+        action("/api/v1/browser/reload", body = mapOf("target" to target))
+
+    suspend fun browserBack(target: String) =
+        action("/api/v1/browser/back", body = mapOf("target" to target))
+
+    suspend fun browserForward(target: String) =
+        action("/api/v1/browser/forward", body = mapOf("target" to target))
+
+    suspend fun browserScroll(target: String, dir: String) =
+        action("/api/v1/browser/scroll", body = mapOf("target" to target, "dir" to dir))
+
+    suspend fun browserClick(target: String, text: String) =
+        action("/api/v1/browser/click", body = mapOf("target" to target, "text" to text))
+
+    suspend fun browserLinks(target: String): PageLinksResponse =
+        client.get(url("/api/v1/browser/links?target=${target.encodeURLParameter()}")).body()
+
+    suspend fun browserClickIndex(target: String, idx: Int) =
+        action(
+            "/api/v1/browser/click_index",
+            body = mapOf("target" to target, "idx" to idx.toString()),
+        )
+
+    suspend fun browserType(target: String, text: String, submit: Boolean) =
+        action(
+            "/api/v1/browser/type",
+            body = mapOf(
+                "target" to target, "text" to text, "submit" to submit.toString(),
+            ),
+        )
+
+    suspend fun webSearch(query: String): WebSearchResponse =
+        client.get(url("/api/v1/web/search?q=${query.encodeURLParameter()}")).body()
+
+    suspend fun youtubeSearch(query: String): YoutubeSearchResponse =
+        client.get(url("/api/v1/youtube/search?q=${query.encodeURLParameter()}")).body()
+
+    suspend fun youtubePlay(videoId: String, target: String? = null) =
+        action(
+            "/api/v1/youtube/play",
+            body = buildMap {
+                put("videoId", videoId)
+                if (target != null) put("target", target)
+            },
+        )
 
     suspend fun netNeighbors(): NetNeighborsResponse =
         client.get(url("/api/v1/net/neighbors")).body()
