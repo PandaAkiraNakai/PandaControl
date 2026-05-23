@@ -43,6 +43,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import io.github.pandaakira.apppanda.PandaApp
+import io.github.pandaakira.apppanda.data.NotifCategory
+import io.github.pandaakira.apppanda.data.NotifGroup
 import io.github.pandaakira.apppanda.data.PandaApi
 import io.github.pandaakira.apppanda.service.AlertsService
 import io.github.pandaakira.apppanda.ui.components.PandaCard
@@ -166,6 +168,9 @@ fun SettingsScreen(app: PandaApp) {
         // ─── Notificaciones push ─────────────────────────────────────────
         PushNotificationsCard(app = app)
 
+        // ─── Qué notificar (filtro por categoría) ────────────────────────
+        NotificationFilterCard(app = app)
+
         // ─── Permisos del sistema ────────────────────────────────────────
         PermissionsCard()
 
@@ -243,6 +248,65 @@ private fun PushNotificationsCard(app: PandaApp) {
                 },
             )
         }
+    }
+}
+
+@Composable
+private fun NotificationFilterCard(app: PandaApp) {
+    val muted by app.settings.mutedNotifs.collectAsState(initial = emptySet())
+    val pushEnabled by app.settings.pushEnabled.collectAsState(initial = false)
+    val scope = rememberCoroutineScope()
+
+    PandaCard(title = "QUÉ NOTIFICAR", accent = PandaCyan) {
+        Text(
+            "Elegí qué eventos disparan notificación. Las solicitudes sudo siempre llegan.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (!pushEnabled) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Activá las notificaciones push de arriba para que esto tenga efecto.",
+                style = MaterialTheme.typography.labelSmall,
+                color = PandaYellow,
+            )
+        }
+        NotifGroup.entries.forEach { group ->
+            Spacer(Modifier.height(12.dp))
+            Text(
+                group.label.uppercase(),
+                style = MaterialTheme.typography.labelSmall,
+                color = PandaCyan,
+            )
+            Spacer(Modifier.height(2.dp))
+            NotifCategory.entries.filter { it.group == group }.forEach { cat ->
+                NotifToggleRow(
+                    label = cat.label,
+                    checked = cat.id !in muted,
+                    enabled = pushEnabled,
+                ) { wanted ->
+                    scope.launch { app.settings.setNotifEnabled(cat.id, wanted) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NotifToggleRow(
+    label: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onChange: (Boolean) -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+        Switch(checked = checked, enabled = enabled, onCheckedChange = onChange)
     }
 }
 

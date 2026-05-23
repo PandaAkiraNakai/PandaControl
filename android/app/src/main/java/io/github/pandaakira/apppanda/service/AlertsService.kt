@@ -21,6 +21,7 @@ import androidx.core.app.NotificationCompat
 import io.github.pandaakira.apppanda.MainActivity
 import io.github.pandaakira.apppanda.PandaApp
 import io.github.pandaakira.apppanda.R
+import io.github.pandaakira.apppanda.data.NotifCategory
 import io.github.pandaakira.apppanda.data.SudoPending
 import io.github.pandaakira.apppanda.data.models.SseEvent
 import kotlinx.coroutines.CoroutineScope
@@ -67,6 +68,10 @@ class AlertsService : Service() {
     private var nextNotifId = 100
     private var activeSudoRingtone: Ringtone? = null
 
+    /** Categorías silenciadas por el usuario en Ajustes. Se actualiza en vivo
+     *  desde DataStore. @Volatile porque se lee desde el collector del SSE. */
+    @Volatile private var mutedNotifs: Set<String> = emptySet()
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -96,9 +101,14 @@ class AlertsService : Service() {
             startForeground(ONGOING_ID, notif)
         }
         if (collectorJob == null) {
+            val app = applicationContext as PandaApp
             collectorJob = scope.launch {
-                val app = applicationContext as PandaApp
                 app.repository.events.collect { evt -> handleEvent(evt) }
+            }
+            // Mantiene el filtro de categorías al día sin releer DataStore por
+            // cada evento.
+            scope.launch {
+                app.settings.mutedNotifs.collect { mutedNotifs = it }
             }
         }
     }
@@ -173,6 +183,10 @@ class AlertsService : Service() {
             handleSudoRequest(evt)
             return
         }
+        // Filtro elegido por el usuario en Ajustes. Una categoría desconocida
+        // (forEvent == null) nunca se silencia: ante la duda, notificamos.
+        val cat = NotifCategory.forEvent(evt.type, evt.key)
+        if (cat != null && cat.id in mutedNotifs) return
         val (title, body) = when (evt.type) {
             "alert" -> {
                 val t = evt.title ?: "Alerta"

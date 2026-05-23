@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -28,6 +29,10 @@ class Settings(private val context: Context) {
         val TOKEN = stringPreferencesKey("token")
         val PUSH_ENABLED = booleanPreferencesKey("push_enabled")
         val AI_CHAT = stringPreferencesKey("ai_chat_json")
+        // Categorías de notificación silenciadas (ids de NotifCategory).
+        // Guardamos las APAGADAS para que cualquier categoría nueva que se
+        // agregue después aparezca encendida por defecto.
+        val MUTED_NOTIFS = stringSetPreferencesKey("muted_notifs")
     }
 
     val config: Flow<BackendConfig> = context.dataStore.data.map { prefs ->
@@ -44,6 +49,20 @@ class Settings(private val context: Context) {
     /** JSON serializado del AIChatState. Vacío = sin chat persistido. */
     val aiChat: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[Keys.AI_CHAT].orEmpty()
+    }
+
+    /** Ids de NotifCategory silenciados. Vacío = todas las categorías activas. */
+    val mutedNotifs: Flow<Set<String>> = context.dataStore.data.map { prefs ->
+        prefs[Keys.MUTED_NOTIFS] ?: emptySet()
+    }
+
+    /** Activa/silencia una categoría de notificación por su id. */
+    suspend fun setNotifEnabled(id: String, enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            val cur = prefs[Keys.MUTED_NOTIFS]?.toMutableSet() ?: mutableSetOf()
+            if (enabled) cur.remove(id) else cur.add(id)
+            prefs[Keys.MUTED_NOTIFS] = cur
+        }
     }
 
     suspend fun saveAiChat(json: String) {
