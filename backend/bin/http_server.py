@@ -391,6 +391,8 @@ class _Handler(BaseHTTPRequestHandler):
         elif path == "/api/v1/files/download":
             self._files_download()
             return
+        elif path == "/api/v1/ai/state":
+            body = self._ai_state()
         elif path == "/api/v1/events":
             self._stream_events()
             return
@@ -506,6 +508,16 @@ class _Handler(BaseHTTPRequestHandler):
                 body = {"result": result}
             elif path == "/api/v1/files/upload":
                 body = self._files_upload()
+            elif path == "/api/v1/ai/send":
+                data = self._read_json_body()
+                body = self._ai_send(data)
+            elif path == "/api/v1/ai/cancel":
+                body = self._ai_cancel()
+            elif path == "/api/v1/ai/reset":
+                body = self._ai_reset()
+            elif path == "/api/v1/ai/model":
+                data = self._read_json_body()
+                body = self._ai_set_model(data)
             elif path == "/api/v1/sudo/request":
                 # POST del askpass binary: autenticación por token interno
                 if not self._authed_sudo_internal():
@@ -973,6 +985,55 @@ class _Handler(BaseHTTPRequestHandler):
             "path": str(final_path),
             "size": length,
         }
+
+    # ─── AI (módulo IA / Claude Code) ────────────────────────────────────
+
+    def _ai(self):
+        return getattr(self.api.ctx, "ai", None)
+
+    def _ai_state(self) -> dict:
+        ai = self._ai()
+        if ai is None:
+            return {"enabled": False}
+        st = ai.state()
+        st["enabled"] = True
+        return st
+
+    def _ai_send(self, data: dict) -> dict:
+        ai = self._ai()
+        if ai is None:
+            return {"result": "error", "error": "ai disabled"}
+        prompt = (data.get("prompt") or "").strip()
+        if not prompt:
+            return {"result": "error", "error": "prompt vacío"}
+        res = ai.start(prompt)
+        if res.get("result") == "ok":
+            self.api.ctx.audit.log(
+                "ai_send", turn_id=res.get("turn_id"),
+                prompt_chars=len(prompt),
+            )
+        return res
+
+    def _ai_cancel(self) -> dict:
+        ai = self._ai()
+        if ai is None:
+            return {"result": "error", "error": "ai disabled"}
+        return ai.cancel()
+
+    def _ai_reset(self) -> dict:
+        ai = self._ai()
+        if ai is None:
+            return {"result": "error", "error": "ai disabled"}
+        return ai.reset()
+
+    def _ai_set_model(self, data: dict) -> dict:
+        ai = self._ai()
+        if ai is None:
+            return {"result": "error", "error": "ai disabled"}
+        model = data.get("model")
+        if isinstance(model, str):
+            model = model.strip() or None
+        return ai.set_model(model)
 
     def _stream_events(self) -> None:
         # En HTTP/1.1, una response sin Content-Length DEBE usar

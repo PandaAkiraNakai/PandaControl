@@ -49,6 +49,12 @@ install -m 0644 -o root -g root \
     "$SRC_DIR/bin/sudo_broker.py" \
     /usr/local/bin/sudo_broker.py
 
+# 2e. claude_runner module (imported por el daemon para módulo IA)
+echo "==> Installing /usr/local/bin/claude_runner.py"
+install -m 0644 -o root -g root \
+    "$SRC_DIR/bin/claude_runner.py" \
+    /usr/local/bin/claude_runner.py
+
 # 2d. sudo-app-askpass binary (reemplazo de SUDO_ASKPASS)
 echo "==> Installing /usr/local/bin/sudo-app-askpass"
 install -m 0755 -o root -g root \

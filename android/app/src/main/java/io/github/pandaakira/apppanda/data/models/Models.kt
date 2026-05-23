@@ -261,6 +261,23 @@ data class FilesListResponse(
 )
 
 @Serializable
+data class AIStateResponse(
+    val enabled: Boolean = false,
+    val busy: Boolean = false,
+    @SerialName("session_id") val sessionId: String? = null,
+    val model: String = "default",
+    @SerialName("working_dir") val workingDir: String = "",
+    @SerialName("turn_id") val turnId: String? = null,
+)
+
+@Serializable
+data class AISendResponse(
+    val result: String = "",
+    val error: String? = null,
+    @SerialName("turn_id") val turnId: String? = null,
+)
+
+@Serializable
 data class FileUploadResponse(
     val result: String = "",
     val error: String? = null,
@@ -325,4 +342,16 @@ data class SseEvent(
     val prompt: String? = null,
     val command: String? = null,
     @SerialName("timeout_s") val timeoutS: Int? = null,
+    // ai_chunk / ai_tool / ai_done / ai_state
+    @SerialName("turn_id") val turnId: String? = null,
+    val delta: String? = null,
+    val tool: String? = null,
+    val icon: String? = null,
+    val summary: String? = null,
+    val ok: Boolean? = null,
+    @SerialName("duration_s") val durationS: Double? = null,
+    val error: String? = null,
+    @SerialName("session_id") val sessionId: String? = null,
+    val busy: Boolean? = null,
+    val model: String? = null,
 )

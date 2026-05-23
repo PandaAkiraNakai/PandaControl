@@ -1,6 +1,8 @@
 package io.github.pandaakira.apppanda.data
 
 import io.github.pandaakira.apppanda.data.models.ActionResult
+import io.github.pandaakira.apppanda.data.models.AISendResponse
+import io.github.pandaakira.apppanda.data.models.AIStateResponse
 import io.github.pandaakira.apppanda.data.models.AppsResponse
 import io.github.pandaakira.apppanda.data.models.AudioResponse
 import io.github.pandaakira.apppanda.data.models.DiskResponse
@@ -231,6 +233,29 @@ class PandaApi(
 
     suspend fun sudoDecision(rid: String, approved: Boolean) =
         action("/api/v1/sudo/$rid/decision", body = mapOf("approved" to approved))
+
+    // ─── IA ───────────────────────────────────────────────────────────────
+
+    suspend fun aiState(): AIStateResponse =
+        client.get(url("/api/v1/ai/state")).body()
+
+    suspend fun aiSend(prompt: String): AISendResponse =
+        client.post(url("/api/v1/ai/send")) {
+            contentType(Application.Json)
+            setBody(mapOf("prompt" to prompt))
+        }.body()
+
+    suspend fun aiCancel(): ActionResult =
+        client.post(url("/api/v1/ai/cancel")).body()
+
+    suspend fun aiReset(): ActionResult =
+        client.post(url("/api/v1/ai/reset")).body()
+
+    suspend fun aiSetModel(model: String): ActionResult =
+        client.post(url("/api/v1/ai/model")) {
+            contentType(Application.Json)
+            setBody(mapOf("model" to model))
+        }.body()
 
     /**
      * SSE stream. Lee líneas crudas del response, parsea `event:` y `data:`,

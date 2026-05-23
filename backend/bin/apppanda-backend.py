@@ -124,6 +124,13 @@ def load_config(path: str) -> dict:
     # que corre el daemon.
     cfg["files"].setdefault("shared_dirs", ["~/Descargas"])
     cfg["files"].setdefault("max_upload_mb", 500)
+    cfg.setdefault("ai", {})
+    cfg["ai"].setdefault("enabled", True)
+    cfg["ai"].setdefault("claude_bin", "claude")
+    cfg["ai"].setdefault("working_dir", "~")
+    cfg["ai"].setdefault("extra_args", [])
+    cfg["ai"].setdefault("default_model", None)  # opus|sonnet|haiku|None
+    cfg["ai"].setdefault("state_path", "/var/lib/apppanda-backend/ai-state.json")
     cfg["steam"].setdefault("exclude_appids", [
         "228980", "1070560", "1391110", "1493710", "1628350", "4183110",
     ])
@@ -1108,7 +1115,8 @@ def execute_apply_updates() -> str:
 # ─── Context ─────────────────────────────────────────────────────────────────
 
 class Context:
-    def __init__(self, cfg, metrics, history, audit, broker, alerts=None, sudo=None):
+    def __init__(self, cfg, metrics, history, audit, broker,
+                 alerts=None, sudo=None, ai=None):
         self.cfg = cfg
         self.metrics = metrics
         self.history = history
@@ -1116,6 +1124,7 @@ class Context:
         self.broker = broker
         self.alerts = alerts
         self.sudo = sudo
+        self.ai = ai
 
 
 _ALERT_TITLES = {
@@ -1302,11 +1311,27 @@ def main() -> None:
 
     from http_server import EventBroker, start_http_server
     from sudo_broker import SudoBroker
+    from claude_runner import ClaudeRunner
     broker = EventBroker()
     alerts = Alerts(cfg)
     sudo = SudoBroker()
 
-    ctx = Context(cfg, metrics, history, audit, broker, alerts=alerts, sudo=sudo)
+    ai = None
+    if cfg.get("ai", {}).get("enabled", True):
+        ai_cfg = dict(cfg["ai"])
+        # Si default_model está seteado y no hay model persistido todavía,
+        # ClaudeRunner lo levantará desde state_path. Solo respetamos
+        # default_model si no hay state previo.
+        ai = ClaudeRunner(
+            ai_cfg,
+            publish=broker.publish,
+            state_path=ai_cfg["state_path"],
+        )
+        if ai.model is None and ai_cfg.get("default_model"):
+            ai.set_model(ai_cfg["default_model"])
+
+    ctx = Context(cfg, metrics, history, audit, broker,
+                  alerts=alerts, sudo=sudo, ai=ai)
 
     audit.log("start", pid=os.getpid(), config=CONFIG_PATH)
     print(
