@@ -19,15 +19,22 @@ StateDirectoryMode=0700
 LogsDirectoryMode=0750
 
 # Hardening
+# ProtectHome=no y RestrictNamespaces=no para que el subproceso `claude`
+# spawneado por claude_runner pueda escribir en ~/.claude/ (session-env,
+# cache, projects) y crear su propio mount namespace para su sandbox
+# interno. Antes estaba ProtectHome=read-only y los hijos heredaban el
+# bind-mount RO de /home, devolviendo EROFS al intentar inicializar.
+# PrivateTmp también se afloja porque claude usa /tmp para artefactos
+# intermedios que a veces tiene que compartir con apps GUI lanzadas.
 ProtectSystem=strict
-ProtectHome=read-only
+ProtectHome=no
 ReadOnlyPaths=/etc/apppanda-backend
 ReadWritePaths=/var/lib/apppanda-backend /var/log/apppanda-backend
-PrivateTmp=yes
+PrivateTmp=no
 NoNewPrivileges=yes
 LockPersonality=yes
 RestrictRealtime=yes
-RestrictNamespaces=yes
+RestrictNamespaces=no
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes
