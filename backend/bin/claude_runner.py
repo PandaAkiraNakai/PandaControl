@@ -19,6 +19,7 @@ from __future__ import annotations
 import datetime
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -92,6 +93,9 @@ class ClaudeRunner:
 
         self._lock = threading.Lock()
         self._proc: subprocess.Popen | None = None
+        # Nombre del unit transient del gestor de systemd del usuario bajo el
+        # que corre claude (ver _spawn). None si se lanzó directo.
+        self._user_unit: str | None = None
         self._current_turn: str | None = None
         self._thread: threading.Thread | None = None
 
@@ -290,9 +294,64 @@ class ClaudeRunner:
         cur_path = env.get("PATH", "")
         if extra not in cur_path.split(":"):
             env["PATH"] = f"{extra}:{cur_path}" if cur_path else extra
+        # SUDO_ASKPASS: el servicio systemd no hereda /etc/profile.d, así que
+        # claude arrancaba sin él y cualquier `sudo` que pidiera el usuario por
+        # el chat fallaba con "a terminal is required ... configure an askpass
+        # helper". Con esto seteado y sin tty (somos un servicio), sudo invoca
+        # el askpass AUTOMÁTICAMENTE — sin necesidad de `-A` — y la aprobación
+        # va al overlay de la app. Ver memoria sudo-via-panda-control-app.
+        env.setdefault(
+            "SUDO_ASKPASS",
+            str(self.cfg.get("sudo_askpass", "/usr/local/bin/sudo-app-askpass")),
+        )
         cwd = os.path.expanduser(
             str(self.cfg.get("working_dir", "~")),
         )
+        # El unit del backend corre con NoNewPrivileges=yes (hardening). Ese
+        # flag se hereda a claude → su herramienta Bash → sudo e impide el
+        # setuid de sudo: sudo aborta ANTES de invocar el askpass, así que el
+        # overlay de aprobación de la app ni se dispara (esto es "el sandbox no
+        # me deja" que reporta el chat). NoNewPrivileges no se puede limpiar y
+        # además queda implícito por varias directivas Protect*/Restrict* del
+        # unit, así que no se arregla relajando una sola línea.
+        #
+        # Solución: lanzar claude vía el gestor de systemd del USUARIO
+        # (systemd-run --user). El proceso corre fuera del árbol hardened del
+        # backend, con NoNewPrivs=0, mientras el backend sigue blindado — así
+        # sudo puede escalar y la aprobación va a la app. Necesita
+        # XDG_RUNTIME_DIR del usuario (el unit del backend no lo hereda). Si
+        # systemd-run o ese runtime dir no están, caemos al spawn directo
+        # (claude anda, pero sin poder hacer sudo).
+        user_unit: str | None = None
+        runtime_dir = env.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+        if (
+            self.cfg.get("spawn_via_user_manager", True)
+            and os.path.isdir(runtime_dir)
+            and shutil.which("systemd-run")
+        ):
+            env["XDG_RUNTIME_DIR"] = runtime_dir
+            user_unit = f"apppanda-ai-{uuid.uuid4().hex[:8]}"
+            # Sólo reenviamos al unit lo que claude/sus tools necesitan; NO las
+            # vars que systemd inyecta al backend (INVOCATION_ID, NOTIFY_SOCKET…).
+            fwd_exact = {
+                "HOME", "PATH", "TERM", "SUDO_ASKPASS", "XDG_RUNTIME_DIR",
+                "LANG", "USER", "LOGNAME",
+            }
+            setenvs = [
+                f"--setenv={k}={v}"
+                for k, v in env.items()
+                if v and (
+                    k in fwd_exact
+                    or k.startswith(("LC_", "CLAUDE_", "ANTHROPIC_"))
+                )
+            ]
+            cmd = [
+                "systemd-run", "--user", "--quiet", "--collect",
+                "--pipe", "--wait", f"--unit={user_unit}",
+                f"--working-directory={cwd}",
+                *setenvs, "--", *cmd,
+            ]
+
         proc = subprocess.Popen(
             cmd, cwd=cwd, env=env,
             stdin=subprocess.DEVNULL,
@@ -304,18 +363,37 @@ class ClaudeRunner:
         )
         with self._lock:
             self._proc = proc
+            self._user_unit = user_unit
         return proc
 
     def _cancel_locked(self) -> bool:
         with self._lock:
             proc = self._proc
-        if proc and proc.poll() is None:
+            unit = self._user_unit
+        if not (proc and proc.poll() is None):
+            return False
+        # Si claude corre bajo el gestor de systemd del usuario, matar el
+        # proceso systemd-run NO detiene el unit (vive en otro árbol). Hay que
+        # pararlo explícitamente: eso termina claude y systemd-run --wait
+        # retorna. El SIGINT queda como fallback (y cubre el spawn directo).
+        if unit:
+            runtime_dir = (
+                os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+            )
             try:
-                proc.send_signal(signal.SIGINT)
-            except OSError:
-                return False
-            return True
-        return False
+                subprocess.run(
+                    ["systemctl", "--user", "stop", unit],
+                    env={**os.environ, "XDG_RUNTIME_DIR": runtime_dir},
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    timeout=10, check=False,
+                )
+            except (OSError, subprocess.SubprocessError):
+                pass
+        try:
+            proc.send_signal(signal.SIGINT)
+        except OSError:
+            return False
+        return True
 
     def _run_turn(self, turn_id: str, prompt: str) -> None:
         started_at = time.monotonic()
@@ -353,6 +431,7 @@ class ClaudeRunner:
         finally:
             with self._lock:
                 self._proc = None
+                self._user_unit = None
                 self._current_turn = None
             self._assistant_buf = []
             duration_s = time.monotonic() - started_at
