@@ -25,21 +25,26 @@ data class SudoPending(
     val receivedAtMs: Long,
 )
 
-/** Estado del chat IA. Mensajes viven en memoria — el contenido de la
- *  conversación lo guarda Claude Code via session_id; perderlo al cerrar
- *  la app es esperado y coherente con el bot Telegram viejo. */
+/** Estado del chat IA. Mensajes inmutables + @Serializable para que
+ *  PandaRepository pueda persistirlos en DataStore y sobreviva a
+ *  cierres de app / kills por OOM. La conversación real vive en Claude
+ *  Code via session_id; cuando el session_id observado cambia (Nuevo,
+ *  daemon reinstalado sin state), se limpia el cache local. */
+@kotlinx.serialization.Serializable
 enum class AIRole { User, Assistant }
 
+@kotlinx.serialization.Serializable
 data class AIMessage(
     val id: String,
     val role: AIRole,
-    var content: String,
-    val tools: MutableList<String> = mutableListOf(),
-    var done: Boolean = false,
-    var durationS: Double? = null,
-    var error: String? = null,
+    val content: String,
+    val tools: List<String> = emptyList(),
+    val done: Boolean = false,
+    val durationS: Double? = null,
+    val error: String? = null,
 )
 
+@kotlinx.serialization.Serializable
 data class AIChatState(
     val messages: List<AIMessage> = emptyList(),
     val busy: Boolean = false,
@@ -92,40 +97,40 @@ class PandaRepository(
     private fun appendDelta(turnId: String?, delta: String) {
         if (delta.isEmpty()) return
         _aiChat.update { st ->
-            val msgs = st.messages.toMutableList()
-            val last = msgs.lastOrNull()
+            val last = st.messages.lastOrNull()
             if (last != null && last.role == AIRole.Assistant && !last.done) {
-                last.content = last.content + delta
-                st.copy(messages = msgs)
+                val updated = last.copy(content = last.content + delta)
+                st.copy(messages = st.messages.dropLast(1) + updated)
             } else {
                 val newMsg = AIMessage(
                     id = turnId ?: System.currentTimeMillis().toString(),
                     role = AIRole.Assistant,
                     content = delta,
                 )
-                st.copy(messages = msgs + newMsg)
+                st.copy(messages = st.messages + newMsg)
             }
         }
+        scheduleSave()
     }
 
     private fun appendTool(turnId: String?, line: String) {
         if (line.isBlank()) return
         _aiChat.update { st ->
-            val msgs = st.messages.toMutableList()
-            val last = msgs.lastOrNull()
+            val last = st.messages.lastOrNull()
             if (last != null && last.role == AIRole.Assistant && !last.done) {
-                last.tools.add(line)
-                st.copy(messages = msgs)
+                val updated = last.copy(tools = last.tools + line)
+                st.copy(messages = st.messages.dropLast(1) + updated)
             } else {
                 val newMsg = AIMessage(
                     id = turnId ?: System.currentTimeMillis().toString(),
                     role = AIRole.Assistant,
                     content = "",
-                    tools = mutableListOf(line),
+                    tools = listOf(line),
                 )
-                st.copy(messages = msgs + newMsg)
+                st.copy(messages = st.messages + newMsg)
             }
         }
+        scheduleSave()
     }
 
     private fun finishTurn(
@@ -133,65 +138,75 @@ class PandaRepository(
         durationS: Double?, error: String?, sessionId: String?,
     ) {
         _aiChat.update { st ->
-            val msgs = st.messages.toMutableList()
-            // Si hubo error y nunca emitimos texto, crear un mensaje placeholder
-            val last = msgs.lastOrNull()
-            if (!ok && (last == null || last.role != AIRole.Assistant || last.done)) {
-                msgs.add(
-                    AIMessage(
-                        id = turnId ?: System.currentTimeMillis().toString(),
-                        role = AIRole.Assistant,
-                        content = "",
-                        done = true,
-                        error = error ?: "error desconocido",
-                    ),
+            val last = st.messages.lastOrNull()
+            val newMessages = if (!ok && (last == null || last.role != AIRole.Assistant || last.done)) {
+                // hubo error y nunca emitimos texto — placeholder
+                st.messages + AIMessage(
+                    id = turnId ?: System.currentTimeMillis().toString(),
+                    role = AIRole.Assistant,
+                    content = "",
+                    done = true,
+                    error = error ?: "error desconocido",
                 )
             } else if (last != null && last.role == AIRole.Assistant && !last.done) {
-                last.done = true
-                last.durationS = durationS
-                last.error = if (!ok) error else null
+                st.messages.dropLast(1) + last.copy(
+                    done = true,
+                    durationS = durationS,
+                    error = if (!ok) error else null,
+                )
+            } else {
+                st.messages
             }
             st.copy(
-                messages = msgs,
+                messages = newMessages,
                 busy = false,
                 currentTurnId = null,
                 sessionId = sessionId ?: st.sessionId,
                 lastError = if (!ok) error else null,
             )
         }
+        scheduleSave()
     }
 
     private fun updateAiState(
         busy: Boolean, sessionId: String?, model: String?, turnId: String?,
     ) {
+        // Si el backend reporta un session_id distinto al que tenemos en
+        // cache local, significa que arrancó conversación nueva (reset
+        // explícito o daemon perdió su state). Tirar los mensajes viejos.
         _aiChat.update { st ->
+            val newSession = sessionId ?: st.sessionId
+            val sessionChanged = sessionId != null && st.sessionId != null &&
+                sessionId != st.sessionId
+            val newMessages = if (sessionChanged) emptyList() else st.messages
             st.copy(
+                messages = newMessages,
                 busy = busy,
-                sessionId = sessionId ?: st.sessionId,
+                sessionId = newSession,
                 model = model ?: st.model,
                 currentTurnId = turnId ?: st.currentTurnId.takeIf { busy },
             )
         }
+        scheduleSave()
     }
 
     fun aiAddUserMessage(content: String, turnId: String?) {
         if (content.isBlank()) return
         _aiChat.update { st ->
-            val msgs = st.messages.toMutableList()
-            msgs.add(
-                AIMessage(
-                    id = turnId ?: System.currentTimeMillis().toString(),
-                    role = AIRole.User,
-                    content = content,
-                    done = true,
-                ),
+            val newMsg = AIMessage(
+                id = turnId ?: System.currentTimeMillis().toString(),
+                role = AIRole.User,
+                content = content,
+                done = true,
             )
-            st.copy(messages = msgs, busy = true, currentTurnId = turnId)
+            st.copy(messages = st.messages + newMsg, busy = true, currentTurnId = turnId)
         }
+        scheduleSave()
     }
 
     fun aiClearMessages() {
         _aiChat.update { it.copy(messages = emptyList(), lastError = null) }
+        scheduleSave()
     }
 
     fun aiSetLastError(error: String) {
@@ -201,13 +216,70 @@ class PandaRepository(
     fun aiSyncFromState(
         busy: Boolean, sessionId: String?, model: String, turnId: String?,
     ) {
-        _aiChat.update {
-            it.copy(
+        // Misma lógica que updateAiState: si el session_id viene distinto
+        // al guardado en cache, asumimos conversación nueva y limpiamos.
+        _aiChat.update { st ->
+            val newSession = sessionId ?: st.sessionId
+            val sessionChanged = sessionId != null && st.sessionId != null &&
+                sessionId != st.sessionId
+            val newMessages = if (sessionChanged) emptyList() else st.messages
+            st.copy(
+                messages = newMessages,
                 busy = busy,
-                sessionId = sessionId ?: it.sessionId,
+                sessionId = newSession,
                 model = model,
                 currentTurnId = turnId,
             )
+        }
+        scheduleSave()
+    }
+
+    // ─── Persistencia del chat IA en DataStore ───────────────────────────
+
+    private val aiJson = kotlinx.serialization.json.Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+    }
+
+    /** Debounce de saves: hay mucho churn por ai_chunk (decenas de deltas
+     *  por respuesta). Coalescemos en un único save 500ms después del
+     *  último cambio. */
+    @Volatile
+    private var pendingSave: kotlinx.coroutines.Job? = null
+
+    private fun scheduleSave() {
+        pendingSave?.cancel()
+        pendingSave = scope.launch(Dispatchers.IO) {
+            delay(500)
+            try {
+                // Estado actual al momento del save (no el de cuando se programó)
+                val st = _aiChat.value
+                // No persistimos transient: busy/currentTurnId/lastError
+                val toSave = st.copy(
+                    busy = false,
+                    currentTurnId = null,
+                    lastError = null,
+                )
+                val json = aiJson.encodeToString(AIChatState.serializer(), toSave)
+                settings.saveAiChat(json)
+            } catch (_: Exception) {
+                // si serialización falla, seguimos sin persistir este snapshot
+            }
+        }
+    }
+
+    private suspend fun loadAiChatFromDisk() {
+        val raw = settings.aiChat.first()
+        if (raw.isBlank()) return
+        try {
+            val restored = aiJson.decodeFromString(AIChatState.serializer(), raw)
+            _aiChat.value = restored.copy(
+                busy = false,
+                currentTurnId = null,
+                lastError = null,
+            )
+        } catch (_: Exception) {
+            // formato viejo / corrupto — empezar limpio
         }
     }
 
@@ -266,6 +338,13 @@ class PandaRepository(
     // orden con las property initializations y referenciar `events` antes
     // de su línea tira NPE.
     init {
+        // 1) Hidratar el chat desde DataStore antes de empezar a consumir
+        //    eventos, así no perdemos el primer ai_state que llega del
+        //    backend al reconectar.
+        scope.launch(Dispatchers.IO) {
+            loadAiChatFromDisk()
+        }
+        // 2) Colectar eventos SSE del módulo IA.
         scope.launch {
             events.collect { evt ->
                 when (evt.type) {

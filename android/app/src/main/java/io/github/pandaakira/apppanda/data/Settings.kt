@@ -27,6 +27,7 @@ class Settings(private val context: Context) {
         val BASE_URL = stringPreferencesKey("base_url")
         val TOKEN = stringPreferencesKey("token")
         val PUSH_ENABLED = booleanPreferencesKey("push_enabled")
+        val AI_CHAT = stringPreferencesKey("ai_chat_json")
     }
 
     val config: Flow<BackendConfig> = context.dataStore.data.map { prefs ->
@@ -38,6 +39,15 @@ class Settings(private val context: Context) {
 
     val pushEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[Keys.PUSH_ENABLED] ?: false
+    }
+
+    /** JSON serializado del AIChatState. Vacío = sin chat persistido. */
+    val aiChat: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[Keys.AI_CHAT].orEmpty()
+    }
+
+    suspend fun saveAiChat(json: String) {
+        context.dataStore.edit { prefs -> prefs[Keys.AI_CHAT] = json }
     }
 
     suspend fun save(baseUrl: String, token: String) {
