@@ -26,10 +26,14 @@ LogsDirectoryMode=0750
 # bind-mount RO de /home, devolviendo EROFS al intentar inicializar.
 # PrivateTmp también se afloja porque claude usa /tmp para artefactos
 # intermedios que a veces tiene que compartir con apps GUI lanzadas.
+# /tmp va explícito en ReadWritePaths: con ProtectSystem=strict TODO el
+# árbol se monta read-only salvo lo listado acá, y PrivateTmp=no por sí
+# solo NO lo hace escribible. Sin esto, claude falla con EROFS al crear
+# su tmpdir /tmp/claude-<uid>/...
 ProtectSystem=strict
 ProtectHome=no
 ReadOnlyPaths=/etc/apppanda-backend
-ReadWritePaths=/var/lib/apppanda-backend /var/log/apppanda-backend
+ReadWritePaths=/var/lib/apppanda-backend /var/log/apppanda-backend /tmp
 PrivateTmp=no
 NoNewPrivileges=yes
 LockPersonality=yes
