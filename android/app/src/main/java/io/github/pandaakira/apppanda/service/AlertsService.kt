@@ -10,7 +10,11 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.media.AudioAttributes
+import android.media.Ringtone
 import android.media.RingtoneManager
 import android.net.Uri
 import androidx.core.app.NotificationCompat
@@ -61,6 +65,7 @@ class AlertsService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var collectorJob: Job? = null
     private var nextNotifId = 100
+    private var activeSudoRingtone: Ringtone? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -239,6 +244,12 @@ class AlertsService : Service() {
         val nm = getSystemService(NotificationManager::class.java) ?: return
         nm.notify(notifId, notif)
 
+        // En modo silencio / vibración del ringer, MagicOS (Honor/Huawei)
+        // suele suprimir el canal cuando usa USAGE_NOTIFICATION_RINGTONE.
+        // Disparamos vibración y ringtone manualmente para garantizar
+        // atención del usuario.
+        fireSudoBuzz()
+
         // Empujar MainActivity por si la app está cerrada (puede no funcionar
         // si Android bloquea startActivity desde background — el
         // full-screen-intent es el camino oficial).
@@ -246,6 +257,56 @@ class AlertsService : Service() {
             startActivity(openIntent)
         } catch (_: Exception) {
             // OK: la notif urgente y el full-screen intent harán el resto.
+        }
+    }
+
+    private fun fireSudoBuzz() {
+        // Vibración fuerte: 5 pulsos largos. Funciona en RINGER_MODE_VIBRATE
+        // y en RINGER_MODE_NORMAL. En SILENT solo vibra si el sistema lo
+        // permite (algunos OEM bypassean silent para vibración explícita).
+        val vibrator: Vibrator? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            (getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager)
+                ?.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+        }
+        if (vibrator?.hasVibrator() == true) {
+            val pattern = longArrayOf(0, 500, 250, 500, 250, 500, 250, 500, 250, 500)
+            try {
+                vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
+            } catch (_: Exception) {
+                // ignore
+            }
+        }
+
+        // Ringtone: si el ringer está en NORMAL, suena. En VIBRATE/SILENT
+        // Android no lo reproduce (esto respeta la preferencia del usuario).
+        // Detenemos cualquier ringtone previo antes de arrancar.
+        try {
+            activeSudoRingtone?.stop()
+        } catch (_: Exception) { /* ignore */ }
+        try {
+            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            val rt = RingtoneManager.getRingtone(applicationContext, uri)
+            rt?.audioAttributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                rt?.isLooping = false
+            }
+            rt?.play()
+            activeSudoRingtone = rt
+            // Auto-stop por seguridad — el ringtone dura solo unos segundos.
+            scope.launch {
+                kotlinx.coroutines.delay(8_000)
+                try { rt?.stop() } catch (_: Exception) { /* ignore */ }
+                if (activeSudoRingtone === rt) activeSudoRingtone = null
+            }
+        } catch (_: Exception) {
+            // ignore
         }
     }
 

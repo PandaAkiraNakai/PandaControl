@@ -19,7 +19,11 @@ push de terceros, sin telemetría — el celu habla directo con tu PC.
 - **Status** — CPU, RAM, disco, red, temperaturas, GPUs, SMART
 - **Trends** — gráficas históricas 1h/6h/24h (Canvas Compose nativo)
 - **Media** — control MPRIS (play/pause/seek±15/fullscreen), cambiar sink
-  de audio, on/off pantallas + DPMS, lanzar apps GUI, lanzar juegos Steam
+  de audio, on/off pantallas + DPMS, lanzar apps GUI, lanzar juegos Steam,
+  comandos del WM niri (fullscreen, cerrar, maximizar, foco de columna,
+  cambiar de workspace, overview) desde una whitelist estricta
+- **IA** — chat con Claude Code corriendo en la torre, sesión persistente
+  vinculada al `session_id` y reinyección de contexto al reconectar
 - **Modules** — poder (off/reboot/suspend/lock con confirm), procesos +
   kill, servicios con start/stop/restart, logs `journalctl`, updates
   `checkupdates` con apply, vecinos LAN, VPS via SSH, ajustes
@@ -27,6 +31,10 @@ push de terceros, sin telemetría — el celu habla directo con tu PC.
   y dispara notificaciones nativas para alertas con histéresis (CPU/RAM/
   disk/temps/GPU/load), servicios `failed`, sesiones nuevas, boot, resume
   de suspend
+- **Aprobación sudo remota** — cuando la torre pide elevación de
+  privilegios, el celu recibe una notificación urgente (vibración +
+  ringtone disparados manualmente para sobrevivir al modo silencio de
+  OEMs como Honor/Xiaomi) y aprobás o rechazás desde un modal in-app
 
 ## Auth
 
@@ -118,7 +126,8 @@ GET  /api/v1/net/neighbors
 GET  /api/v1/vps  ·  /vps/{alias}/summary
 GET  /api/v1/games  ·  /apps  ·  /updates
 GET  /api/v1/events   (Server-Sent Events: metric_tick / alert /
-                       service_failed / session_new / boot / resume)
+                       service_failed / session_new / boot / resume /
+                       sudo_request)
 
 POST /api/v1/power/{off|reboot|suspend|lock}        X-Confirm: true
 POST /api/v1/processes/{pid}/kill                   X-Confirm: true
@@ -127,10 +136,17 @@ POST /api/v1/updates/apply                          X-Confirm: true
 POST /api/v1/audio/sink            {sink: "..."}
 POST /api/v1/screens/{output}/{on|off}
 POST /api/v1/screens/dpms/{on|off}
+POST /api/v1/niri/cmd/{cmd}        (whitelist: fullscreen-window, close-window,
+                                   maximize-column, focus-column-{left|right},
+                                   focus-workspace-{up|down}, toggle-overview,
+                                   media-workspace)
 POST /api/v1/media/{player}/{play-pause|next|previous|seek:+15|seek:-15|fullscreen|vol-up|vol-down}
 POST /api/v1/apps/{name}/launch
 POST /api/v1/games/{appid}/launch
 POST /api/v1/net/wake/{alias}
+POST /api/v1/sudo/request                            (askpass broker)
+GET  /api/v1/sudo/{rid}/wait?timeout=N
+POST /api/v1/sudo/{rid}/decision   {approve: bool}
 ```
 
 ## Stack

@@ -1,10 +1,13 @@
 package io.github.pandaakira.apppanda.ui.settings
 
 import android.Manifest
+import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings as AndroidSettings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -255,6 +258,11 @@ private fun PermissionsCard() {
             context, Manifest.permission.POST_NOTIFICATIONS,
         ) == PackageManager.PERMISSION_GRANTED
 
+    val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+    var batteryIgnored by remember {
+        mutableStateOf(pm?.isIgnoringBatteryOptimizations(context.packageName) == true)
+    }
+
     PandaCard(title = "PERMISOS", accent = PandaYellow) {
         PermissionRow(
             label = "Mostrar notificaciones",
@@ -263,6 +271,27 @@ private fun PermissionsCard() {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }
+            },
+        )
+        Spacer(Modifier.height(8.dp))
+        PermissionRow(
+            label = "Ignorar optimización de batería",
+            granted = batteryIgnored,
+            onRequest = {
+                @SuppressLint("BatteryLife")
+                val intent = Intent(
+                    AndroidSettings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    Uri.fromParts("package", context.packageName, null),
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                try {
+                    context.startActivity(intent)
+                } catch (_: Exception) {
+                    val fallback = Intent(
+                        AndroidSettings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS,
+                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(fallback)
+                }
+                batteryIgnored = pm?.isIgnoringBatteryOptimizations(context.packageName) == true
             },
         )
         Spacer(Modifier.height(8.dp))
@@ -279,7 +308,8 @@ private fun PermissionsCard() {
             Text("Abrir ajustes de la app en Android")
         }
         Text(
-            "Internet, network state, foreground service y wake-lock se conceden al instalar (no requieren prompt). POST_NOTIFICATIONS se pide cuando activas push.",
+            "Si las notifs no llegan con la pantalla apagada: pedí la excepción de batería de arriba. " +
+                "Honor / Xiaomi además requieren activar manualmente \"Inicio automático\" y poner la batería de la app en \"Sin restricciones\" desde los ajustes del sistema.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 8.dp),
