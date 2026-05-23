@@ -265,11 +265,15 @@ private fun EnviarTab(
     val scope = rememberCoroutineScope()
     val errorColor = MaterialTheme.colorScheme.error
 
-    // GetContent (SAF) NO requiere permisos de runtime — el sistema delega
-    // al picker que devuelve un content:// Uri que la app puede leer.
-    // Pedir permisos antes causaba crashes en algunos celulares.
+    // OpenDocument (ACTION_OPEN_DOCUMENT) va directo a DocumentsUI/SAF y NO
+    // requiere permisos de runtime: devuelve un content:// Uri legible.
+    // Usamos OpenDocument en vez de GetContent a propósito: en varias ROMs
+    // (HONOR/EMUI) el Photo Picker intercepta ACTION_GET_CONTENT y, si el mime
+    // no es foto/vídeo, intenta reenviar a DocumentsUI con un intent que falla
+    // por SecurityException → el proceso del picker crashea y parece que la app
+    // se cerró. ACTION_OPEN_DOCUMENT esquiva el Photo Picker por completo.
     val pickLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.GetContent(),
+        ActivityResultContracts.OpenDocument(),
     ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
         val client = api ?: return@rememberLauncherForActivityResult
@@ -309,7 +313,7 @@ private fun EnviarTab(
         Button(
             onClick = {
                 try {
-                    pickLauncher.launch("*/*")
+                    pickLauncher.launch(arrayOf("*/*"))
                 } catch (e: Exception) {
                     onBanner(
                         "selector: ${e.message?.take(80) ?: e::class.simpleName}",

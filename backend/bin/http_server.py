@@ -461,8 +461,9 @@ class _Handler(BaseHTTPRequestHandler):
                 body = {"sink": sink, "result": result}
             elif path.startswith("/api/v1/niri/cmd/"):
                 cmd = path[len("/api/v1/niri/cmd/"):]
-                result = api.niri_cmd(cmd)
-                body = {"cmd": cmd, "result": result}
+                output = self._parse_qs().get("output") or None
+                result = api.niri_cmd(cmd, output)
+                body = {"cmd": cmd, "output": output, "result": result}
             elif path.startswith("/api/v1/screens/dpms/"):
                 action = path[len("/api/v1/screens/dpms/"):]
                 if action not in ("on", "off"):

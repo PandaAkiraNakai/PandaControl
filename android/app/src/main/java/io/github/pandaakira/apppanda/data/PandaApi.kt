@@ -219,8 +219,13 @@ class PandaApi(
     suspend fun setDpms(on: Boolean) =
         action("/api/v1/screens/dpms/${if (on) "on" else "off"}")
 
-    suspend fun niriCmd(cmd: String) =
-        action("/api/v1/niri/cmd/$cmd")
+    suspend fun niriCmd(cmd: String, output: String? = null) =
+        action(
+            "/api/v1/niri/cmd/$cmd" +
+                if (output != null)
+                    "?output=${java.net.URLEncoder.encode(output, "UTF-8")}"
+                else "",
+        )
 
     suspend fun mediaAction(player: String, act: String) =
         action("/api/v1/media/$player/$act")

@@ -941,13 +941,30 @@ NIRI_CMD_MAP: dict[str, list[str]] = {
     "maximize-column":     ["action", "maximize-column"],
     "toggle-overview":     ["action", "toggle-overview"],
     "media-workspace":     ["action", "spawn", "--", "media-workspace"],
+    # "Fijar" un monitor: solo enfocarlo (sin acción extra). Con
+    # warp-mouse-to-focus en niri, el cursor se mueve a ese monitor, así las
+    # apps que se lancen después se abren en la pantalla fijada.
+    "focus-monitor":       [],
 }
 
 
-def niri_cmd(cmd: str) -> str:
+def niri_cmd(cmd: str, output: str | None = None) -> str:
     args = NIRI_CMD_MAP.get(cmd)
     if args is None:
         return f"comando desconocido: {cmd}"
+    # Si se pidió un monitor concreto, lo enfocamos antes de disparar la acción.
+    # Las acciones de niri (fullscreen, columnas, workspaces…) operan sobre el
+    # monitor enfocado, así que con 3 pantallas hay que mover el foco primero.
+    if output:
+        valid = {o["name"] for o in niri_outputs()[0]}
+        if output not in valid:
+            return f"monitor desconocido: {output}"
+        rc, _, stderr = _niri_run(["action", "focus-monitor", output])
+        if rc != 0:
+            return (stderr or f"focus-monitor exit {rc}")[:300]
+    if not args:
+        # Comando "solo foco": el trabajo era enfocar el monitor de arriba.
+        return "ok" if output else "falta output para focus-monitor"
     rc, stdout, stderr = _niri_run(args)
     if rc == 0:
         return "ok"

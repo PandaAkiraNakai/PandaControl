@@ -3,6 +3,7 @@ package io.github.pandaakira.apppanda.ui.media
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -32,8 +33,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,6 +47,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.pandaakira.apppanda.PandaApp
+import io.github.pandaakira.apppanda.data.models.NiriOutput
 import io.github.pandaakira.apppanda.ui.components.ActionResultBanner
 import io.github.pandaakira.apppanda.ui.components.PandaCard
 import io.github.pandaakira.apppanda.ui.components.ScreenHeader
@@ -51,6 +57,8 @@ import io.github.pandaakira.apppanda.ui.theme.PandaGreen
 import io.github.pandaakira.apppanda.ui.theme.PandaMagenta
 import io.github.pandaakira.apppanda.ui.theme.PandaOrange
 import io.github.pandaakira.apppanda.ui.theme.PandaYellow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private data class MediaEntry(
     val route: String,
@@ -71,6 +79,20 @@ private data class NiriCmd(
 fun MediaTabScreen(app: PandaApp, onNavigate: (String) -> Unit) {
     val api by app.repository.api.collectAsState()
     val exec = rememberActionExecutor { api }
+
+    // Monitor objetivo para los comandos de niri. null = monitor enfocado.
+    var outputs by remember { mutableStateOf<List<NiriOutput>>(emptyList()) }
+    var targetOutput by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(api) {
+        val current = api ?: return@LaunchedEffect
+        try {
+            // Todos los monitores conectados (no solo los encendidos): si una
+            // pantalla está en reposo igual debe poder elegirse como objetivo.
+            outputs = withContext(Dispatchers.IO) { current.screens() }.outputs
+        } catch (_: Exception) {
+            // Si no se pudieron leer las pantallas queda solo la opción "Foco".
+        }
+    }
 
     val tiles = listOf(
         MediaEntry("media", "Reproductor", "MPRIS · play/pause · seek · fullscreen",
@@ -125,10 +147,50 @@ fun MediaTabScreen(app: PandaApp, onNavigate: (String) -> Unit) {
 
         PandaCard(title = "COMANDOS :: niri", accent = PandaCyan) {
             Text(
-                "atajos del WM · tocá para disparar",
+                "atajos del WM · toca para disparar",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+
+            // Selector de monitor objetivo: enfoca esa pantalla antes del comando.
+            if (outputs.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "monitor objetivo · fija foco y cursor",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = PandaCyan,
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    MonitorPill(
+                        label = "Foco",
+                        selected = targetOutput == null,
+                        enabled = !exec.busy,
+                    ) { targetOutput = null }
+                    outputs.forEach { o ->
+                        val name = o.label.ifBlank { o.name }
+                        MonitorPill(
+                            label = name,
+                            selected = targetOutput == o.name,
+                            enabled = !exec.busy,
+                        ) {
+                            // Fija el monitor al instante: enfoca ese output (y
+                            // con warp-mouse-to-focus el cursor se va ahí), así
+                            // las apps que lances después abren en esa pantalla.
+                            targetOutput = o.name
+                            exec.run("Foco → $name") {
+                                it.niriCmd("focus-monitor", o.name)
+                            }
+                        }
+                    }
+                }
+            }
+
             Spacer(Modifier.height(12.dp))
             // Grid 3 columnas, manual.
             cmds.chunked(3).forEach { row ->
@@ -142,7 +204,7 @@ fun MediaTabScreen(app: PandaApp, onNavigate: (String) -> Unit) {
                             enabled = !exec.busy && api != null,
                             modifier = Modifier.weight(1f),
                         ) {
-                            exec.run(c.label) { it.niriCmd(c.id) }
+                            exec.run(c.label) { it.niriCmd(c.id, targetOutput) }
                         }
                     }
                     repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
@@ -181,6 +243,40 @@ private fun MediaTile(entry: MediaEntry, modifier: Modifier = Modifier, onClick:
             )
         }
     }
+}
+
+@Composable
+private fun MonitorPill(
+    label: String,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val accent = PandaCyan
+    val alpha = if (enabled) 1f else 0.4f
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelSmall,
+        color = if (selected) {
+            MaterialTheme.colorScheme.onSurface.copy(alpha = alpha)
+        } else {
+            accent.copy(alpha = 0.7f * alpha)
+        },
+        textAlign = TextAlign.Center,
+        maxLines = 1,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(
+                if (selected) accent.copy(alpha = 0.18f * alpha) else Color.Transparent,
+            )
+            .border(
+                1.dp,
+                accent.copy(alpha = (if (selected) 0.8f else 0.35f) * alpha),
+                RoundedCornerShape(8.dp),
+            )
+            .clickable(enabled = enabled) { onClick() }
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+    )
 }
 
 @Composable
