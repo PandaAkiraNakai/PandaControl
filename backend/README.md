@@ -31,7 +31,32 @@ públicos.
 | `GET /api/v1/games` | biblioteca Steam |
 | `GET /api/v1/apps` | config de [apps.*] |
 | `GET /api/v1/updates` | checkupdates parsed |
+| `GET /api/v1/browser/tabs` | pestañas abiertas de Brave (CDP) |
+| `GET /api/v1/browser/links?target=ID` | elementos clicables de la página + etiqueta |
+| `GET /api/v1/web/search?q=...` | búsqueda web (DuckDuckGo HTML) |
+| `GET /api/v1/youtube/search?q=...` | búsqueda YouTube (ytInitialData) |
 | `GET /api/v1/events` | SSE: `hello`, `metric_tick`, `service_failed`, `session_new`, `boot`, `resume` |
+
+## Módulo Navegador (Brave vía CDP)
+
+`browser.py` controla Brave por Chrome DevTools Protocol con un cliente
+WebSocket mínimo de stdlib (sin librerías externas). Requiere lanzar Brave
+con `--remote-debugging-port=9222 --remote-allow-origins=*`, escuchando solo
+en `127.0.0.1` (cómodo vía `~/.config/brave-flags.conf`). Las búsquedas web
+y de YouTube se parsean por HTTP, sin abrir el navegador.
+
+Acciones (POST, body JSON):
+
+| Path | Body | Qué hace |
+|---|---|---|
+| `/api/v1/browser/open` | `{url}` | abre una URL o búsqueda en una pestaña nueva |
+| `/api/v1/browser/navigate` | `{target, url}` | navega la pestaña `target` |
+| `/api/v1/browser/{activate\|close\|reload\|back\|forward}` | `{target}` | control de pestaña |
+| `/api/v1/browser/scroll` | `{target, dir}` | scroll (`up\|down\|top\|bottom`) con rueda CDP |
+| `/api/v1/browser/click` | `{target, text}` | clic en el enlace/botón visible que contenga `text` |
+| `/api/v1/browser/click_index` | `{target, idx}` | clic en el elemento `idx` listado por `/browser/links` |
+| `/api/v1/browser/type` | `{target, text, submit}` | escribe en el campo de texto principal |
+| `/api/v1/youtube/play` | `{videoId, target?}` | reproduce un video en Brave |
 
 ## Inventario (después de instalar)
 

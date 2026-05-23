@@ -42,6 +42,7 @@ PC; si no, no existe para nadie más.
 | **Status** | CPU, RAM, disco, red, temperaturas, GPUs y estado SMART en vivo. |
 | **Trends** | Gráficas históricas 1h / 6h / 24h, dibujadas nativamente en Canvas. |
 | **Media** | Control MPRIS (play/pausa, seek ±15s, fullscreen del video), cambiar el sink de audio, prender/apagar pantallas (DPMS), lanzar apps GUI, lanzar juegos de Steam y comandos del WM `niri` desde una whitelist estricta. |
+| **Navegador** | Control de Brave por Chrome DevTools Protocol: abrir URLs o lanzar una búsqueda en el PC; buscar en la web y **elegir un link** desde el celular; buscar y reproducir YouTube sin abrir el navegador; gestionar pestañas (foco, atrás/adelante, recargar, cerrar); y controlar la página activa — scroll (rueda real, funciona con scroll interno), clic por texto, escribir (con setter nativo para inputs React/Vue) y **listar los elementos clicables** de la página, incluso pósters o banners sin texto (la etiqueta sale del `aria-label`/`alt` de la imagen). |
 | **IA** | Chat con [Claude Code](https://claude.com/claude-code) corriendo en tu PC, con sesión persistente y reinyección de contexto al reconectar. |
 | **Sistema** | Apagar / reiniciar / suspender / bloquear (con confirmación), listar y matar procesos, gestionar servicios (start/stop/restart), ver logs de `journalctl`, revisar y aplicar actualizaciones (`checkupdates`), ver vecinos de la LAN y consultar tus VPS por SSH. |
 | **Archivos** | Listar, descargar y subir archivos de los directorios que tú compartas. |
@@ -61,6 +62,10 @@ PC; si no, no existe para nadie más.
   de teclas) y `polkit` (acciones que requieren privilegios). El daemon
   arranca igual aunque falte cualquiera de estos; solo se desactiva la
   función correspondiente.
+- *Para el módulo Navegador*: Brave (o Chromium) lanzado con
+  `--remote-debugging-port=9222 --remote-allow-origins=*`, escuchando solo
+  en `127.0.0.1`. La forma cómoda es ponerlo en `~/.config/brave-flags.conf`
+  para que el wrapper lo aplique en cada arranque.
 
 **Para compilar la app:**
 
@@ -316,6 +321,8 @@ GET  /api/v1/media/players  ·  /media/{player}/status
 GET  /api/v1/net/neighbors
 GET  /api/v1/vps  ·  /vps/{alias}/summary
 GET  /api/v1/games  ·  /apps  ·  /updates
+GET  /api/v1/browser/tabs  ·  /browser/links?target=ID
+GET  /api/v1/web/search?q=...  ·  /youtube/search?q=...
 GET  /api/v1/events   (SSE: metric_tick / alert / service_failed /
                        session_new / boot / resume / sudo_request)
 
@@ -334,6 +341,14 @@ POST /api/v1/media/{player}/{play-pause|next|previous|seek:+15|seek:-15|fullscre
 POST /api/v1/apps/{name}/launch
 POST /api/v1/games/{appid}/launch
 POST /api/v1/net/wake/{alias}
+POST /api/v1/browser/open              {url}
+POST /api/v1/browser/navigate          {target, url}
+POST /api/v1/browser/{activate|close|reload|back|forward}   {target}
+POST /api/v1/browser/scroll            {target, dir: up|down|top|bottom}
+POST /api/v1/browser/click             {target, text}
+POST /api/v1/browser/click_index       {target, idx}
+POST /api/v1/browser/type              {target, text, submit}
+POST /api/v1/youtube/play              {videoId, target?}
 POST /api/v1/sudo/request                            (askpass broker)
 GET  /api/v1/sudo/{rid}/wait?timeout=N
 POST /api/v1/sudo/{rid}/decision   {approve: bool}
