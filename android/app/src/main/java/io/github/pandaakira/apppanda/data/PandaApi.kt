@@ -26,6 +26,7 @@ import io.github.pandaakira.apppanda.data.models.VpsSummary
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.cio.CIO
+import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.DefaultRequest
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -33,6 +34,7 @@ import io.ktor.serialization.kotlinx.json.json
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.accept
 import io.ktor.client.request.get
+import io.ktor.client.request.prepareGet
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -60,7 +62,6 @@ class PandaApi(
     private val client = HttpClient(CIO) {
         expectSuccess = false
         install(HttpTimeout) {
-            requestTimeoutMillis = 15_000
             connectTimeoutMillis = 5_000
             socketTimeoutMillis = 60_000
         }
@@ -75,7 +76,35 @@ class PandaApi(
         }
     }
 
-    fun close() = client.close()
+    // Cliente dedicado para SSE: usa engine OkHttp (mas robusto que
+    // CIO para HTTP/1.1 chunked encoding — CIO 3.0.2 tira "Chunked
+    // stream has ended unexpectedly" al parsear streams largos).
+    // Sin ContentNegotiation y sin socketTimeout.
+    private val sseClient = HttpClient(OkHttp) {
+        expectSuccess = false
+        install(HttpTimeout) {
+            connectTimeoutMillis = 15_000
+        }
+        install(DefaultRequest) {
+            if (token.isNotBlank()) {
+                header(HttpHeaders.Authorization, "Bearer $token")
+            }
+        }
+        engine {
+            // OkHttp: timeouts del engine, no del plugin HttpTimeout
+            config {
+                retryOnConnectionFailure(true)
+                connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                readTimeout(0, java.util.concurrent.TimeUnit.MILLISECONDS)
+                writeTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            }
+        }
+    }
+
+    fun close() {
+        client.close()
+        sseClient.close()
+    }
 
     private fun url(path: String) = "$baseUrl$path"
 
@@ -181,40 +210,52 @@ class PandaApi(
      * Implementación manual sobre ByteReadChannel para no depender del
      * plugin de SSE de ktor (que añade restricciones de versión).
      */
-    fun events(): Flow<SseEvent> = flow {
-        val response: HttpResponse = client.get(url("/api/v1/events")) {
+    /**
+     * SSE stream. Si pasás `onByte`, se invoca con cada línea leída del
+     * stream (raw, incluido heartbeat) — útil para que el repo trackee
+     * cuándo llegó el último byte aunque el parse falle.
+     */
+    fun events(onByte: (() -> Unit)? = null): Flow<SseEvent> = flow {
+        // prepareGet + execute mantiene la response viva durante todo
+        // el bloque. Con `client.get` Ktor cierra la response al salir
+        // del scope (que en streams largos == inmediatamente), tirando
+        // excepciones de tipo "request body length should be specified"
+        // u otras al intentar leer el channel.
+        sseClient.prepareGet(url("/api/v1/events")) {
             accept(ContentType("text", "event-stream"))
-        }
-        val channel = response.bodyAsChannel()
+        }.execute { response ->
+            val channel = response.bodyAsChannel()
 
-        var currentEvent: String? = null
-        val dataBuf = StringBuilder()
+            var currentEvent: String? = null
+            val dataBuf = StringBuilder()
 
-        suspend fun emitIfReady() {
-            if (dataBuf.isEmpty()) {
+            suspend fun emitIfReady() {
+                if (dataBuf.isEmpty()) {
+                    currentEvent = null
+                    return
+                }
+                val payload = dataBuf.toString()
+                dataBuf.clear()
                 currentEvent = null
-                return
+                try {
+                    val evt = json.decodeFromString(SseEvent.serializer(), payload)
+                    emit(evt)
+                } catch (e: Exception) {
+                    emit(SseEvent(type = "__parse_error__", title = e.message?.take(80)))
+                }
             }
-            val payload = dataBuf.toString()
-            dataBuf.clear()
-            currentEvent = null
-            try {
-                val evt = json.decodeFromString(SseEvent.serializer(), payload)
-                emit(evt)
-            } catch (_: Exception) {
-                // payload inválido, lo ignoramos
-            }
-        }
 
-        while (!channel.isClosedForRead) {
-            val line = channel.readUTF8Line() ?: break
-            when {
-                line.isEmpty() -> emitIfReady()
-                line.startsWith(":") -> { /* comment / heartbeat */ }
-                line.startsWith("event:") -> currentEvent = line.removePrefix("event:").trim()
-                line.startsWith("data:") -> {
-                    if (dataBuf.isNotEmpty()) dataBuf.append('\n')
-                    dataBuf.append(line.removePrefix("data:").trimStart())
+            while (!channel.isClosedForRead) {
+                val line = channel.readUTF8Line() ?: break
+                onByte?.invoke()
+                when {
+                    line.isEmpty() -> emitIfReady()
+                    line.startsWith(":") -> { /* comment / heartbeat */ }
+                    line.startsWith("event:") -> currentEvent = line.removePrefix("event:").trim()
+                    line.startsWith("data:") -> {
+                        if (dataBuf.isNotEmpty()) dataBuf.append('\n')
+                        dataBuf.append(line.removePrefix("data:").trimStart())
+                    }
                 }
             }
         }

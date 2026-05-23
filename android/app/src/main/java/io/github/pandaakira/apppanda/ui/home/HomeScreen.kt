@@ -185,26 +185,47 @@ private fun fmtUptime(secs: Double): String {
 @Composable
 private fun HomeHeader(app: PandaApp, hostname: String?) {
     val lastEventAt by app.repository.lastEventAt.collectAsState()
+    val lastByteAt by app.repository.lastByteAt.collectAsState()
+    val lastError by app.repository.lastError.collectAsState()
+    val parseErrors by app.repository.parseErrorCount.collectAsState()
     var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
         while (true) {
             nowMs = System.currentTimeMillis()
-            delay(2_000)
+            delay(1_000)
         }
     }
     val connected = lastEventAt > 0 && (nowMs - lastEventAt) < 30_000
-    androidx.compose.foundation.layout.Row(
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Canvas(modifier = Modifier.size(10.dp)) {
-            drawCircle(if (connected) PandaGreen else PandaRed)
+    androidx.compose.foundation.layout.Column {
+        androidx.compose.foundation.layout.Row(
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Canvas(modifier = Modifier.size(10.dp)) {
+                drawCircle(if (connected) PandaGreen else PandaRed)
+            }
+            Spacer(Modifier.width(8.dp))
+            Text(
+                ">> PANDA // ${hostname ?: "—"}",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
         }
-        Spacer(Modifier.width(8.dp))
+        // Diagnóstico del SSE (visible mientras debugeamos)
+        val byteAge = if (lastByteAt > 0) "${(nowMs - lastByteAt) / 1000}s" else "—"
+        val evtAge = if (lastEventAt > 0) "${(nowMs - lastEventAt) / 1000}s" else "—"
         Text(
-            ">> PANDA // ${hostname ?: "—"}",
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.primary,
+            "byte:$byteAge · evt:$evtAge · parse_err:$parseErrors",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        lastError?.let {
+            Text(
+                "err: $it",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                maxLines = 2,
+            )
+        }
     }
 }
 

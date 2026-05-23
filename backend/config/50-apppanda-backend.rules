@@ -40,6 +40,11 @@ polkit.addRule(function(action, subject) {
             "NetworkManager.service": true,
             "systemd-resolved.service": true,
             "docker.service": true,
+            // Bots Telegram + backend mismo de la app.
+            "bot-comandos-torre.service": true,
+            "sudo-telegram.service": true,
+            "claude-telegram.service": true,
+            "apppanda-backend.service": true,
             // Oneshot del botón "Aplicar updates". Solo start/status.
             "pacman-update.service": true,
         };

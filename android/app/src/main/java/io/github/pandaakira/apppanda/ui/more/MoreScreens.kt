@@ -1062,9 +1062,13 @@ private fun AppTile(
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
-    val firstChar = a.label.firstOrNull()
-    val (icon, rest) = if (firstChar != null && firstChar.code > 127) {
-        a.label.first().toString() to a.label.drop(1).trim()
+    // Extraer el primer code point completo (emojis son surrogate pairs en UTF-16
+    // y .first() devuelve solo el high surrogate, rompiendo el render).
+    val firstCp = a.label.codePointAt(0)
+    val firstCpStr = String(Character.toChars(firstCp))
+    val isEmoji = firstCp >= 0x2300 || firstCp == 0x25B6
+    val (icon, rest) = if (isEmoji) {
+        firstCpStr to a.label.substring(firstCpStr.length).trim()
     } else {
         "▶" to a.label
     }
@@ -1079,7 +1083,14 @@ private fun AppTile(
             .padding(12.dp),
         verticalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(icon, style = MaterialTheme.typography.headlineMedium)
+        // fontFamily explícitamente Default (null) para que el sistema
+        // resuelva el fallback a Noto Color Emoji para los glyphs no-ASCII.
+        Text(
+            icon,
+            style = MaterialTheme.typography.headlineMedium.copy(
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Default,
+            ),
+        )
         Text(
             rest.ifBlank { a.name },
             style = MaterialTheme.typography.titleMedium,

@@ -172,6 +172,11 @@ class TailscaleAuth:
 class _Handler(BaseHTTPRequestHandler):
     server_version = f"apppanda/{VERSION}"
     sys_version = ""
+    # HTTP/1.1 para que el cliente Ktor CIO no rechace responses sin
+    # Content-Length (caso típico de SSE). En HTTP/1.0 Ktor tira
+    # "Failed to parse request body: request body length should be
+    # specified" al no encontrar Content-Length ni Transfer-Encoding.
+    protocol_version = "HTTP/1.1"
 
     api = None
     broker: EventBroker = None
@@ -187,7 +192,10 @@ class _Handler(BaseHTTPRequestHandler):
         )
 
     def log_request(self, code='-', size='-'):
-        pass
+        sys.stderr.write(
+            f"[http] {self.address_string()} {self.command} "
+            f"{self.path} -> {code}\n"
+        )
 
     def _peer_addr(self) -> str:
         # client_address es (host, port); host puede ser IPv4 o IPv6
@@ -742,10 +750,27 @@ class _Handler(BaseHTTPRequestHandler):
         return {"count": len(pkgs), "packages": pkgs, "raw": out[:4000]}
 
     def _stream_events(self) -> None:
+        # En HTTP/1.1, una response sin Content-Length DEBE usar
+        # Transfer-Encoding: chunked. Sin eso, clientes serios (Ktor
+        # CIO entre ellos) rechazan la response con "request body
+        # length should be specified" antes de leer ningun byte.
+        # TCP_NODELAY desactiva Nagle's algorithm para que los chunks
+        # SSE (tipicamente <500 bytes) salgan inmediatamente y no
+        # queden buffereados esperando completar un MTU. Sin esto los
+        # eventos pueden tardar segundos o no llegar nunca a clientes
+        # detras de redes con buffering agresivo (Tailscale, mobile).
+        try:
+            import socket as _socket
+            self.connection.setsockopt(
+                _socket.IPPROTO_TCP, _socket.TCP_NODELAY, 1
+            )
+        except OSError:
+            pass
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Connection", "keep-alive")
+        self.send_header("Transfer-Encoding", "chunked")
         self.send_header("X-Accel-Buffering", "no")
         self.end_headers()
         self._audit("/api/v1/events", 200)
@@ -757,6 +782,29 @@ class _Handler(BaseHTTPRequestHandler):
                 "version": VERSION, "boot_id": _boot_id(),
             }
             self._sse_write("hello", hello)
+
+            # Replay de sudo_requests pendientes al recien conectado.
+            # Sin esto, si el cliente reconecta despues del publish,
+            # el evento se pierde y la notif fullscreen nunca aparece.
+            try:
+                api = self.api
+                broker = getattr(api.ctx, "sudo", None) if api else None
+                if broker:
+                    timeout_s = api.ctx.cfg.get(
+                        "sudo_app", {}
+                    ).get("approval_timeout_s", 60)
+                    for entry in broker.pending_list():
+                        self._sse_write("sudo_request", {
+                            "type": "sudo_request",
+                            "rid": entry["rid"],
+                            "prompt": entry.get("prompt", ""),
+                            "command": entry.get("command", ""),
+                            "hostname": _hostname(),
+                            "timeout_s": timeout_s,
+                        })
+            except Exception:
+                pass
+
             last_beat = time.monotonic()
 
             while True:
@@ -769,24 +817,38 @@ class _Handler(BaseHTTPRequestHandler):
                 now = time.monotonic()
                 if now - last_beat >= self.SSE_HEARTBEAT_S:
                     try:
-                        self.wfile.write(b": heartbeat\n\n")
-                        self.wfile.flush()
+                        self._chunk_write(b": heartbeat\n\n")
                     except (BrokenPipeError, ConnectionResetError):
                         break
                     last_beat = now
         except (BrokenPipeError, ConnectionResetError):
             pass
         finally:
+            try:
+                self.wfile.write(b"0\r\n\r\n")
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                pass
             self.broker.unsubscribe(q)
+
+    def _chunk_write(self, data: bytes) -> None:
+        """Escribe un chunk con framing Transfer-Encoding: chunked."""
+        if not data:
+            return
+        self.wfile.write(f"{len(data):x}\r\n".encode("ascii"))
+        self.wfile.write(data)
+        self.wfile.write(b"\r\n")
+        self.wfile.flush()
 
     def _sse_write(self, event: str, data: dict) -> None:
         payload = json.dumps(data, ensure_ascii=False, default=str)
+        buf = bytearray()
+        buf += f"event: {event}\n".encode("utf-8")
+        for line in payload.splitlines() or [""]:
+            buf += f"data: {line}\n".encode("utf-8")
+        buf += b"\n"
         try:
-            self.wfile.write(f"event: {event}\n".encode("utf-8"))
-            for line in payload.splitlines() or [""]:
-                self.wfile.write(f"data: {line}\n".encode("utf-8"))
-            self.wfile.write(b"\n")
-            self.wfile.flush()
+            self._chunk_write(bytes(buf))
         except (BrokenPipeError, ConnectionResetError):
             raise
 

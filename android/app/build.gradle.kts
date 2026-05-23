@@ -21,8 +21,8 @@ android {
         applicationId = "io.github.pandaakira.apppanda"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "0.7.0"
+        versionCode = 18
+        versionName = "0.7.7"
     }
 
     signingConfigs {
@@ -85,6 +85,7 @@ dependencies {
 
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.cio)
+    implementation(libs.ktor.client.okhttp)
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.serialization.kotlinx.json)
     implementation(libs.ktor.client.auth)
