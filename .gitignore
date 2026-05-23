@@ -1,0 +1,34 @@
+# Android
+android/build/
+android/app/build/
+android/.gradle/
+android/.idea/
+android/local.properties
+android/keystore.properties
+android/captures/
+android/.externalNativeBuild/
+android/.cxx/
+*.iml
+
+# Keystores nunca al repo
+*.jks
+*.keystore
+
+# Build artifacts
+*.apk
+*.aab
+*.aar
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

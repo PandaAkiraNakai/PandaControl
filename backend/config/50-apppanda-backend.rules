@@ -1,0 +1,50 @@
+// /etc/polkit-1/rules.d/50-apppanda-backend.rules
+//
+// INSTALL.sh reemplaza __TARGET_USER__ con $TARGET_USER al copiar a /etc.
+// Si lo instalas a mano, edita ese string a tu usuario antes de copiar.
+//
+// Permite a TARGET_USER invocar acciones de poder de logind y manejar un
+// set narrow-scope de unidades systemd sin prompt polkit.
+//
+// Scope: solo TARGET_USER, solo estas acciones, solo estas unidades.
+
+polkit.addRule(function(action, subject) {
+    if (subject.user !== "__TARGET_USER__") {
+        return;
+    }
+
+    var loginActions = [
+        "org.freedesktop.login1.power-off",
+        "org.freedesktop.login1.power-off-multiple-sessions",
+        "org.freedesktop.login1.reboot",
+        "org.freedesktop.login1.reboot-multiple-sessions",
+        "org.freedesktop.login1.suspend",
+        "org.freedesktop.login1.suspend-multiple-sessions",
+        "org.freedesktop.login1.lock-sessions",
+    ];
+    if (loginActions.indexOf(action.id) >= 0) {
+        return polkit.Result.YES;
+    }
+
+    var systemdActions = [
+        "org.freedesktop.systemd1.manage-units",
+        "org.freedesktop.systemd1.manage-unit-files",
+        "org.freedesktop.systemd1.reload-daemon",
+    ];
+    if (systemdActions.indexOf(action.id) >= 0) {
+        var unit = action.lookup("unit") || "";
+        // Whitelist de unidades manejables sin auth. Editá si necesitás
+        // controlar otras unidades desde la app.
+        var allowedUnits = {
+            "sshd.service": true,
+            "NetworkManager.service": true,
+            "systemd-resolved.service": true,
+            "docker.service": true,
+            // Oneshot del botón "Aplicar updates". Solo start/status.
+            "pacman-update.service": true,
+        };
+        if (allowedUnits[unit]) {
+            return polkit.Result.YES;
+        }
+    }
+});

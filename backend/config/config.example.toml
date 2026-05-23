@@ -1,0 +1,121 @@
+# apppanda-backend — config.
+#
+# El backend HTTP de la app Android Panda. Independiente del bot de Telegram.
+# Lee métricas del sistema, expone HTTP REST en /api/v1/* y push SSE en
+# /api/v1/events. Sin Telegram, sin polkit (Fase 1: read-only).
+
+# ─── HTTP server ─────────────────────────────────────────────────────────
+#
+# Auth: Bearer token en Authorization header. /api/v1/health y /version
+# son públicos. Sin tokens configurados, los endpoints autenticados
+# devuelven 401.
+#
+# Bind: default 127.0.0.1. Para acceso desde el celular, levantar Tailscale
+# en la torre y poner aquí la IP de la interfaz tailscale0 (100.x.y.z).
+# NUNCA bindear a 0.0.0.0 — incluso siendo Fase 1 read-only, esto expone
+# métricas del sistema, lista de procesos, journal, etc.
+#
+# Generar un token: python -c "import secrets; print(secrets.token_hex(32))"
+[http]
+enabled = true
+host = "127.0.0.1"
+port = 8890
+tokens = []
+# host = "100.64.0.5"   # IP Tailscale de la torre
+# tokens = ["<hex de 64 chars>"]
+
+# ─── Auth alternativa: identidad Tailscale ───────────────────────────────
+#
+# Si enabled = true y la request viene desde una IP del rango Tailscale
+# (100.64.0.0/10 o fd7a:115c:a1e0::/48), el server llama
+# `tailscale whois --json <peer_ip>` y autoriza si el UserProfile.LoginName
+# está en allowed_logins. Esto permite que la app Android no necesite
+# token — solo estar en tu tailnet con tu cuenta.
+#
+# Si la IP no es Tailscale, o whois falla, o el login no está en la lista,
+# se cae al esquema de Bearer token de arriba.
+#
+# Para ver tu LoginName actual:
+#   tailscale whois --json <tu_ip_tailscale> | jq .UserProfile.LoginName
+#
+[auth.tailscale]
+enabled = false
+allowed_logins = []
+whois_cache_s = 60
+# enabled = true
+# allowed_logins = ["PandaAkiraNakai@github"]
+
+# ─── Monitor ─────────────────────────────────────────────────────────────
+#
+# interval_s     — cada cuánto el monitor toma snapshot completo + escribe SQLite
+# tick_publish_s — cada cuánto se publica un metric_tick liviano por SSE
+#                  para feed en vivo de la app (no escribe SQLite)
+[monitor]
+enabled = true
+interval_s = 60
+tick_publish_s = 5
+
+# ─── Histórico (SQLite WAL) ──────────────────────────────────────────────
+[history]
+db_path = "/var/lib/apppanda-backend/metrics.db"
+retain_days = 14
+
+# ─── Auditoría (JSONL append-only) ───────────────────────────────────────
+[audit]
+log_path = "/var/log/apppanda-backend/audit.log"
+
+# ─── Red ─────────────────────────────────────────────────────────────────
+[network]
+ping_hosts = ["1.1.1.1", "8.8.8.8"]
+
+# ─── Servicios para mostrar en /api/v1/services ──────────────────────────
+[services]
+watch = [
+    "sshd",
+    "NetworkManager",
+    "systemd-resolved",
+    "apppanda-backend",
+    "bot-comandos-torre",
+    "docker",
+]
+manageable = []   # Fase 3 (acciones destructivas vía polkit)
+
+# ─── Updates ─────────────────────────────────────────────────────────────
+[updates]
+command = ["checkupdates"]
+
+# ─── SMART (opcional) ────────────────────────────────────────────────────
+[smart]
+devices = []
+# devices = ["/dev/nvme0n1"]
+
+[sudo]
+enabled = false
+
+# ─── Apps GUI (para Fase 3 — todavía no se lanzan vía HTTP) ──────────────
+# Listadas en /api/v1/apps. El lanzamiento llega en Fase 3 con confirm.
+
+# [apps.firefox]
+# cmd = ["firefox"]
+# label = "🦊 Firefox"
+
+# ─── MPRIS / playerctl ───────────────────────────────────────────────────
+[mpris]
+ignore_players = []
+
+# ─── VPS bridge (SSH) ────────────────────────────────────────────────────
+[vps.hosts]
+# [vps.hosts.vpspriv]
+# ssh_alias = "vpspriv"
+
+# ─── Steam ───────────────────────────────────────────────────────────────
+[steam]
+use_gamescope = true
+exclude_appids = [
+    "228980",
+    "1070560",
+    "1391110",
+    "1493710",
+    "1628350",
+    "4183110",
+]

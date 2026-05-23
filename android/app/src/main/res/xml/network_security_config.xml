@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+        Permitimos cleartext porque el uso esperado es sobre Tailscale: el
+        backend bindea a una IP del rango CGNAT (100.64.0.0/10) y todo el
+        tráfico va por el túnel WireGuard de Tailscale (ya cifrado E2E).
+
+        Si querés agregar TLS al endpoint /api/v1/*, generá un certificado
+        para tu nodo (mkcert, tailscale cert, etc.), apuntá la app a https
+        y restringí esta config a tu dominio MagicDNS.
+    -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
