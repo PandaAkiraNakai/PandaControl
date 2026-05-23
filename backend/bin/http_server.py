@@ -14,6 +14,8 @@ Auth: Bearer token en header Authorization. /api/v1/health y
 import hmac
 import ipaddress
 import json
+import mimetypes
+import os
 import re
 import secrets
 import socket
@@ -22,7 +24,9 @@ import sys
 import threading
 import time
 import traceback
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from queue import Empty, Queue
 from urllib.parse import parse_qs, unquote, urlsplit
 
@@ -382,6 +386,11 @@ class _Handler(BaseHTTPRequestHandler):
             body = self._apps()
         elif path == "/api/v1/updates":
             body = self._updates()
+        elif path == "/api/v1/files":
+            body = self._files_list()
+        elif path == "/api/v1/files/download":
+            self._files_download()
+            return
         elif path == "/api/v1/events":
             self._stream_events()
             return
@@ -495,6 +504,8 @@ class _Handler(BaseHTTPRequestHandler):
             elif path == "/api/v1/updates/apply":
                 result = api.execute_apply_updates()
                 body = {"result": result}
+            elif path == "/api/v1/files/upload":
+                body = self._files_upload()
             elif path == "/api/v1/sudo/request":
                 # POST del askpass binary: autenticación por token interno
                 if not self._authed_sudo_internal():
@@ -641,14 +652,34 @@ class _Handler(BaseHTTPRequestHandler):
         watch_rows = []
         for svc in cfg.get("watch", []):
             unit = svc if "." in svc else f"{svc}.service"
-            out = api.run(
-                ["systemctl", "is-active", unit], timeout=5,
-            ).strip()
-            watch_rows.append({"unit": unit, "state": out})
+            # Una sola llamada que devuelve LoadState y ActiveState (dos líneas)
+            out = api.run([
+                "systemctl", "show", "--no-pager", "--value",
+                "-p", "LoadState", "-p", "ActiveState", unit,
+            ], timeout=5).strip()
+            lines = [l.strip() for l in out.splitlines() if l.strip()]
+            # Si la unit no existe, systemctl show devuelve LoadState=not-found
+            # ActiveState=inactive — la filtramos para no mostrar zombies del
+            # config viejo.
+            load_state = lines[0] if len(lines) >= 1 else ""
+            active_state = lines[1] if len(lines) >= 2 else ""
+            if load_state in ("not-found", "masked", ""):
+                continue
+            watch_rows.append({"unit": unit, "state": active_state})
+        # Filtrar también las manageable que no existan
+        manageable_filtered = []
+        for svc in cfg.get("manageable", []):
+            unit = svc if "." in svc else f"{svc}.service"
+            out = api.run([
+                "systemctl", "show", "--no-pager", "--value",
+                "-p", "LoadState", unit,
+            ], timeout=5).strip()
+            if out and out != "not-found" and out != "masked":
+                manageable_filtered.append(svc)
         return {
             "failed": failed,
             "watch": watch_rows,
-            "manageable": cfg.get("manageable", []),
+            "manageable": manageable_filtered,
         }
 
     def _logs(self) -> dict:
@@ -748,6 +779,200 @@ class _Handler(BaseHTTPRequestHandler):
                     "name": parts[0], "from": parts[1], "to": parts[3],
                 })
         return {"count": len(pkgs), "packages": pkgs, "raw": out[:4000]}
+
+    # ─── Files (módulo Archivos) ─────────────────────────────────────────
+
+    _MAX_FILENAME = 255
+    _FILENAME_RE = re.compile(r"[A-Za-z0-9._\-+=@\(\) ,'¡!¿?áéíóúñÁÉÍÓÚÑ]+$")
+
+    def _shared_dirs(self) -> list[Path]:
+        cfg = self.api.ctx.cfg.get("files", {})
+        out: list[Path] = []
+        for entry in cfg.get("shared_dirs", []):
+            p = Path(os.path.expanduser(str(entry))).resolve()
+            if p.is_dir():
+                out.append(p)
+        return out
+
+    def _resolve_dir(self, idx_str: str) -> Path | None:
+        try:
+            idx = int(idx_str)
+        except (TypeError, ValueError):
+            return None
+        dirs = self._shared_dirs()
+        if 0 <= idx < len(dirs):
+            return dirs[idx]
+        return None
+
+    def _safe_filename(self, name: str) -> str | None:
+        """Devuelve un filename limpio o None si es inválido. Sin separadores,
+        sin paths, sin caracteres raros, longitud razonable."""
+        if not name or len(name) > self._MAX_FILENAME:
+            return None
+        if "/" in name or "\\" in name or name in (".", "..") or name.startswith("."):
+            return None
+        if not self._FILENAME_RE.match(name):
+            return None
+        return name
+
+    def _files_list(self) -> dict:
+        cfg = self.api.ctx.cfg.get("files", {})
+        if not cfg.get("enabled", True):
+            return {"enabled": False, "dirs": []}
+        q = self._parse_qs()
+        dirs = self._shared_dirs()
+        # Si no se especifica dir, devuelve el listado de shared dirs.
+        if "dir" not in q:
+            return {
+                "enabled": True,
+                "upload_to": str(dirs[0]) if dirs else "",
+                "max_upload_mb": int(cfg.get("max_upload_mb", 500)),
+                "dirs": [
+                    {"idx": i, "path": str(p), "label": p.name or str(p)}
+                    for i, p in enumerate(dirs)
+                ],
+            }
+        target = self._resolve_dir(q.get("dir", "0"))
+        if target is None:
+            return {"error": "dir inválido"}
+        files = []
+        try:
+            for entry in sorted(target.iterdir(), key=lambda e: e.name.lower()):
+                if entry.name.startswith("."):
+                    continue
+                try:
+                    st = entry.stat()
+                except OSError:
+                    continue
+                files.append({
+                    "name": entry.name,
+                    "size": st.st_size,
+                    "mtime": int(st.st_mtime),
+                    "is_dir": entry.is_dir(),
+                })
+        except PermissionError:
+            return {"error": "sin permisos"}
+        return {
+            "enabled": True,
+            "dir_idx": int(q.get("dir", "0")),
+            "path": str(target),
+            "files": files,
+        }
+
+    def _files_download(self) -> None:
+        cfg = self.api.ctx.cfg.get("files", {})
+        if not cfg.get("enabled", True):
+            self._err(403, "files disabled")
+            self._audit("/api/v1/files/download", 403)
+            return
+        q = self._parse_qs()
+        target = self._resolve_dir(q.get("dir", ""))
+        name = self._safe_filename(q.get("name", ""))
+        if target is None or name is None:
+            self._err(400, "dir/name inválidos")
+            self._audit("/api/v1/files/download", 400)
+            return
+        path = target / name
+        if not path.is_file():
+            self._err(404, "no existe")
+            self._audit("/api/v1/files/download", 404)
+            return
+        # Confirmar que el archivo realmente cuelga del shared_dir (defensa
+        # contra symlinks que apunten fuera).
+        try:
+            real = path.resolve(strict=True)
+            real.relative_to(target)
+        except (ValueError, OSError):
+            self._err(403, "fuera del shared_dir")
+            self._audit("/api/v1/files/download", 403)
+            return
+        size = path.stat().st_size
+        ctype, _ = mimetypes.guess_type(name)
+        self.send_response(200)
+        self.send_header("Content-Type", ctype or "application/octet-stream")
+        self.send_header("Content-Length", str(size))
+        # filename* RFC 5987 (UTF-8) para nombres con tildes/ñ.
+        fname_quoted = urllib.parse.quote(name, safe="")
+        self.send_header(
+            "Content-Disposition",
+            f"attachment; filename*=UTF-8''{fname_quoted}",
+        )
+        self.end_headers()
+        try:
+            with path.open("rb") as fp:
+                while True:
+                    chunk = fp.read(64 * 1024)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        self.api.ctx.audit.log(
+            "files_download", dir=str(target), name=name, size=size,
+        )
+
+    def _files_upload(self) -> dict:
+        cfg = self.api.ctx.cfg.get("files", {})
+        if not cfg.get("enabled", True):
+            raise PermissionError("files disabled")
+        dirs = self._shared_dirs()
+        if not dirs:
+            raise FileNotFoundError("no hay shared_dirs configurados")
+        target_dir = dirs[0]
+        # filename viene en header X-Filename (URL-encoded UTF-8).
+        raw_name = self.headers.get("X-Filename", "").strip()
+        name = self._safe_filename(urllib.parse.unquote(raw_name))
+        if name is None:
+            return {"result": "error", "error": "X-Filename inválido"}
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            length = 0
+        max_bytes = int(cfg.get("max_upload_mb", 500)) * 1024 * 1024
+        if length <= 0 or length > max_bytes:
+            return {"result": "error",
+                    "error": f"size inválido (max {max_bytes // (1024*1024)} MB)"}
+        # Si ya existe, agregar sufijo (1), (2), ...
+        final_path = target_dir / name
+        if final_path.exists():
+            stem, dot, ext = name.rpartition(".")
+            if dot == "":
+                stem, ext = name, ""
+            for i in range(1, 1000):
+                candidate = target_dir / (
+                    f"{stem} ({i}){'.' + ext if ext else ''}"
+                )
+                if not candidate.exists():
+                    final_path = candidate
+                    break
+        # Escribir streaming. Atómico: tmp + rename.
+        tmp_path = final_path.with_suffix(final_path.suffix + ".part")
+        remaining = length
+        try:
+            with tmp_path.open("wb") as fp:
+                while remaining > 0:
+                    chunk = self.rfile.read(min(64 * 1024, remaining))
+                    if not chunk:
+                        break
+                    fp.write(chunk)
+                    remaining -= len(chunk)
+            if remaining > 0:
+                tmp_path.unlink(missing_ok=True)
+                return {"result": "error", "error": "stream incompleto"}
+            tmp_path.rename(final_path)
+        except OSError as e:
+            tmp_path.unlink(missing_ok=True)
+            return {"result": "error", "error": f"escribir: {e}"}
+        self.api.ctx.audit.log(
+            "files_upload", dir=str(target_dir),
+            name=final_path.name, size=length,
+        )
+        return {
+            "result": "ok",
+            "saved_as": final_path.name,
+            "path": str(final_path),
+            "size": length,
+        }
 
     def _stream_events(self) -> None:
         # En HTTP/1.1, una response sin Content-Length DEBE usar

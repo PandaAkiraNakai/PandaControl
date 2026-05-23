@@ -27,6 +27,7 @@ import androidx.navigation.compose.rememberNavController
 import io.github.pandaakira.apppanda.PandaApp
 import io.github.pandaakira.apppanda.ui.home.HomeScreen
 import io.github.pandaakira.apppanda.ui.media.MediaTabScreen
+import io.github.pandaakira.apppanda.ui.files.FilesScreen
 import io.github.pandaakira.apppanda.ui.more.AppsScreen
 import io.github.pandaakira.apppanda.ui.more.AudioScreen
 import io.github.pandaakira.apppanda.ui.more.DisplaysScreen
@@ -42,6 +43,7 @@ import io.github.pandaakira.apppanda.ui.more.UpdatesScreen
 import io.github.pandaakira.apppanda.ui.more.VpsScreen
 import io.github.pandaakira.apppanda.ui.onboarding.OnboardingScreen
 import io.github.pandaakira.apppanda.ui.status.StatusScreen
+import io.github.pandaakira.apppanda.ui.sudo.SudoApprovalOverlay
 import io.github.pandaakira.apppanda.ui.trends.TrendsScreen
 
 private sealed class Dest(val route: String, val label: String, val icon: ImageVector) {
@@ -122,6 +124,7 @@ fun AppNav(app: PandaApp) {
             composable("trends") { TrendsScreen(app = app) }
             composable("processes") { ProcessesScreen(app = app) }
             composable("services") { ServicesListScreen(app = app) }
+            composable("files") { FilesScreen(app = app) }
             composable("logs") { LogsScreen(app = app) }
             composable("updates") { UpdatesScreen(app = app) }
             composable("network") { NetworkScreen(app = app) }
@@ -143,4 +146,9 @@ fun AppNav(app: PandaApp) {
             }
         }
     }
+
+    // Overlay de sudo: vive a nivel del AppNav y se superpone sobre lo que sea
+    // que esté visible (Home, Modules, settings, etc.) cuando llega un
+    // sudo_request por SSE.
+    SudoApprovalOverlay(app = app)
 }

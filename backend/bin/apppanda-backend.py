@@ -117,6 +117,13 @@ def load_config(path: str) -> dict:
     cfg["vps"].setdefault("hosts", {})
     cfg.setdefault("steam", {})
     cfg["steam"].setdefault("use_gamescope", True)
+    cfg.setdefault("files", {})
+    cfg["files"].setdefault("enabled", True)
+    # Directorios expuestos a la app. Upload va al primero. El usuario puede
+    # listar/descargar archivos de cualquiera. ~ se expande al home del usuario
+    # que corre el daemon.
+    cfg["files"].setdefault("shared_dirs", ["~/Descargas"])
+    cfg["files"].setdefault("max_upload_mb", 500)
     cfg["steam"].setdefault("exclude_appids", [
         "228980", "1070560", "1391110", "1493710", "1628350", "4183110",
     ])

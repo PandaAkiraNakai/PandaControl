@@ -233,6 +233,43 @@ data class AppEntry(
 data class AppsResponse(val apps: List<AppEntry>)
 
 @Serializable
+data class SharedDir(val idx: Int, val path: String, val label: String)
+
+@Serializable
+data class FilesIndexResponse(
+    val enabled: Boolean = true,
+    @SerialName("upload_to") val uploadTo: String = "",
+    @SerialName("max_upload_mb") val maxUploadMb: Int = 0,
+    val dirs: List<SharedDir> = emptyList(),
+)
+
+@Serializable
+data class FileEntry(
+    val name: String,
+    val size: Long,
+    val mtime: Long,
+    @SerialName("is_dir") val isDir: Boolean = false,
+)
+
+@Serializable
+data class FilesListResponse(
+    val enabled: Boolean = true,
+    @SerialName("dir_idx") val dirIdx: Int = 0,
+    val path: String = "",
+    val files: List<FileEntry> = emptyList(),
+    val error: String? = null,
+)
+
+@Serializable
+data class FileUploadResponse(
+    val result: String = "",
+    val error: String? = null,
+    @SerialName("saved_as") val savedAs: String? = null,
+    val path: String? = null,
+    val size: Long? = null,
+)
+
+@Serializable
 data class ActionResult(
     val result: String = "",
     val error: String? = null,

@@ -15,6 +15,15 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.launch
 
+/** Pending sudo approval request — vive en memoria, no se persiste. */
+data class SudoPending(
+    val rid: String,
+    val prompt: String,
+    val command: String,
+    val timeoutS: Int,
+    val receivedAtMs: Long,
+)
+
 /** Singleton liviano que mantiene el API y el stream SSE, reconstruyéndolo
  *  cuando cambia la config (token o baseUrl). */
 class PandaRepository(
@@ -39,6 +48,16 @@ class PandaRepository(
 
     private val _parseErrorCount = MutableStateFlow(0)
     val parseErrorCount: StateFlow<Int> = _parseErrorCount.asStateFlow()
+
+    /** Última solicitud de sudo pendiente recibida por SSE. La UI muestra
+     *  un dialog modal cuando esto != null. AlertsService la setea cuando
+     *  llega un evento sudo_request; el dialog la limpia al decidir o al
+     *  vencer el timeout. */
+    private val _pendingSudo = MutableStateFlow<SudoPending?>(null)
+    val pendingSudo: StateFlow<SudoPending?> = _pendingSudo.asStateFlow()
+
+    fun setPendingSudo(req: SudoPending) { _pendingSudo.value = req }
+    fun clearPendingSudo() { _pendingSudo.value = null }
 
     init {
         scope.launch(Dispatchers.IO) {

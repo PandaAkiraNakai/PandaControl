@@ -4,6 +4,9 @@ import io.github.pandaakira.apppanda.data.models.ActionResult
 import io.github.pandaakira.apppanda.data.models.AppsResponse
 import io.github.pandaakira.apppanda.data.models.AudioResponse
 import io.github.pandaakira.apppanda.data.models.DiskResponse
+import io.github.pandaakira.apppanda.data.models.FileUploadResponse
+import io.github.pandaakira.apppanda.data.models.FilesIndexResponse
+import io.github.pandaakira.apppanda.data.models.FilesListResponse
 import io.github.pandaakira.apppanda.data.models.GamesResponse
 import io.github.pandaakira.apppanda.data.models.GpusResponse
 import io.github.pandaakira.apppanda.data.models.HealthResponse
@@ -153,6 +156,33 @@ class PandaApi(
 
     suspend fun apps(): AppsResponse =
         client.get(url("/api/v1/apps")).body()
+
+    // ─── Files ────────────────────────────────────────────────────────────
+
+    suspend fun filesIndex(): FilesIndexResponse =
+        client.get(url("/api/v1/files")).body()
+
+    suspend fun filesList(dirIdx: Int): FilesListResponse =
+        client.get(url("/api/v1/files?dir=$dirIdx")).body()
+
+    /** Devuelve el HttpResponse para que el caller streamee el body al
+     *  ContentResolver del MediaStore (no carga el archivo en memoria). */
+    suspend fun filesDownload(dirIdx: Int, name: String): HttpResponse {
+        val encoded = java.net.URLEncoder.encode(name, "UTF-8")
+        return client.get(url("/api/v1/files/download?dir=$dirIdx&name=$encoded"))
+    }
+
+    /** Sube bytes con header X-Filename y Content-Length para que el daemon
+     *  los stree al disco. content-type octet-stream. */
+    suspend fun filesUpload(name: String, bytes: ByteArray): FileUploadResponse {
+        val encoded = java.net.URLEncoder.encode(name, "UTF-8")
+        return client.post(url("/api/v1/files/upload")) {
+            header("X-Filename", encoded)
+            header(HttpHeaders.ContentLength, bytes.size.toString())
+            contentType(ContentType.Application.OctetStream)
+            setBody(bytes)
+        }.body()
+    }
 
     // ─── POST (acciones) ──────────────────────────────────────────────────
 

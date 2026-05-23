@@ -12,6 +12,20 @@
     <uses-permission android:name="android.permission.TURN_SCREEN_ON" />
     <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
 
+    <!-- Módulo Archivos: lectura del contenido elegido en el selector y
+         escritura a Downloads/. Android 13+ usa READ_MEDIA_*, < 13 usa
+         READ_EXTERNAL_STORAGE. WRITE_EXTERNAL_STORAGE solo aplica < 29
+         (después es scoped storage, MediaStore.Downloads no lo necesita). -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
     <application
         android:name=".PandaApp"
         android:label="Panda Control"
@@ -36,17 +50,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <activity
-            android:name=".sudo.SudoApprovalActivity"
-            android:exported="false"
-            android:theme="@style/Theme.PandaControl"
-            android:showOnLockScreen="true"
-            android:turnScreenOn="true"
-            android:showWhenLocked="true"
-            android:excludeFromRecents="true"
-            android:launchMode="singleTask"
-            android:taskAffinity="" />
 
         <service
             android:name=".service.AlertsService"

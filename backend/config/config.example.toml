@@ -119,3 +119,18 @@ exclude_appids = [
     "1628350",
     "4183110",
 ]
+
+# ─── Files (módulo Archivos) ─────────────────────────────────────────────
+#
+# Permite a la app listar/descargar archivos de los shared_dirs y subir
+# archivos al primer shared_dir. Validaciones: filenames se restringen a un
+# set seguro (alfa-numérico + algunos símbolos comunes), no se sirven dot-
+# files, y los downloads chequean que el realpath siga colgando del
+# shared_dir (defensa contra symlinks rebeldes).
+#
+# Solo configurar shared_dirs que querás que sean accesibles desde el
+# celular. ~ se expande al home del usuario que corre el daemon.
+[files]
+enabled = true
+shared_dirs = ["~/Descargas"]
+max_upload_mb = 500

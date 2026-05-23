@@ -17,8 +17,8 @@ import androidx.core.app.NotificationCompat
 import io.github.pandaakira.apppanda.MainActivity
 import io.github.pandaakira.apppanda.PandaApp
 import io.github.pandaakira.apppanda.R
+import io.github.pandaakira.apppanda.data.SudoPending
 import io.github.pandaakira.apppanda.data.models.SseEvent
-import io.github.pandaakira.apppanda.sudo.SudoApprovalActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -189,21 +189,31 @@ class AlertsService : Service() {
         val command = evt.command.orEmpty()
         val timeoutS = evt.timeoutS ?: 60
 
-        // Hash estable del rid para reusar notifId si llega duplicado.
+        // Notif id estable por rid para reusar si llega duplicado.
         val notifId = SUDO_NOTIF_BASE + (rid.hashCode() and 0x7fff)
 
-        val activityIntent = Intent(this, SudoApprovalActivity::class.java).apply {
+        // Guardar en el repo: AppNav observa este StateFlow y muestra un
+        // dialog modal dentro de la app (no más Activity separada).
+        val app = applicationContext as PandaApp
+        app.repository.setPendingSudo(
+            SudoPending(
+                rid = rid,
+                prompt = prompt,
+                command = command,
+                timeoutS = timeoutS,
+                receivedAtMs = System.currentTimeMillis(),
+            ),
+        )
+
+        // PendingIntent simple: abre MainActivity. El dialog ya está pendiente
+        // en el StateFlow del repo, se mostrará al composer la UI.
+        val openIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                 Intent.FLAG_ACTIVITY_CLEAR_TOP or
                 Intent.FLAG_ACTIVITY_SINGLE_TOP
-            putExtra(SudoApprovalActivity.EXTRA_RID, rid)
-            putExtra(SudoApprovalActivity.EXTRA_PROMPT, prompt)
-            putExtra(SudoApprovalActivity.EXTRA_COMMAND, command)
-            putExtra(SudoApprovalActivity.EXTRA_TIMEOUT_S, timeoutS)
-            putExtra(SudoApprovalActivity.EXTRA_NOTIF_ID, notifId)
         }
         val pi = PendingIntent.getActivity(
-            this, rid.hashCode(), activityIntent,
+            this, rid.hashCode(), openIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
@@ -229,10 +239,11 @@ class AlertsService : Service() {
         val nm = getSystemService(NotificationManager::class.java) ?: return
         nm.notify(notifId, notif)
 
-        // También intentamos lanzar la Activity directo (Android puede ignorar
-        // si la app está totalmente cerrada y sin full-screen-intent permitido).
+        // Empujar MainActivity por si la app está cerrada (puede no funcionar
+        // si Android bloquea startActivity desde background — el
+        // full-screen-intent es el camino oficial).
         try {
-            startActivity(activityIntent)
+            startActivity(openIntent)
         } catch (_: Exception) {
             // OK: la notif urgente y el full-screen intent harán el resto.
         }

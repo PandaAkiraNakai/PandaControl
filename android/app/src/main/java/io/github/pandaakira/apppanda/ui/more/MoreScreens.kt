@@ -24,6 +24,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Subject
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.PowerSettingsNew
@@ -86,6 +87,7 @@ fun ModulesScreen(onNavigate: (String) -> Unit) {
         ModuleEntry("trends", "Tendencia", Icons.Outlined.BarChart, PandaYellow),
         ModuleEntry("processes", "Procesos", Icons.Outlined.Memory, PandaYellow),
         ModuleEntry("services", "Servicios", Icons.Outlined.Tune, PandaCyan),
+        ModuleEntry("files", "Archivos", Icons.Outlined.Folder, PandaGreen),
         ModuleEntry("logs", "Logs", Icons.Outlined.Subject, PandaMagenta),
         ModuleEntry("updates", "Updates", Icons.Outlined.SystemUpdate, PandaGreen),
         ModuleEntry("network", "Red", Icons.Outlined.Wifi, PandaGreen),
@@ -275,13 +277,20 @@ fun ServicesListScreen(app: PandaApp) {
 
     LaunchedEffect(api, refresh) {
         val current = api ?: return@LaunchedEffect
-        scope.launch {
-            try {
-                data = withContext(Dispatchers.IO) { current.services() }
-                error = null
-            } catch (e: Exception) {
-                error = e.message ?: e::class.simpleName
-            }
+        try {
+            data = withContext(Dispatchers.IO) { current.services() }
+            error = null
+        } catch (e: Exception) {
+            error = e.message ?: e::class.simpleName
+        }
+    }
+
+    // Auto-refresh cada 5 s mientras la pantalla esté visible.
+    LaunchedEffect(api) {
+        if (api == null) return@LaunchedEffect
+        while (true) {
+            kotlinx.coroutines.delay(5_000)
+            refresh++
         }
     }
 
@@ -290,7 +299,7 @@ fun ServicesListScreen(app: PandaApp) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
-        item { ScreenHeader("SERVICES", "manageable → start/stop/restart") }
+        item { ScreenHeader("SERVICES", "auto-refresh 5s · units inexistentes filtradas") }
         error?.let { item { ErrorCard(it) } }
         data?.let { d ->
             if (d.failed.isNotEmpty()) {
