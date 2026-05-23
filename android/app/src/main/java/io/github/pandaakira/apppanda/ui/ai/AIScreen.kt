@@ -69,10 +69,14 @@ fun AIScreen(app: PandaApp) {
     val listState = rememberLazyListState()
 
     // Auto-scroll al fondo cuando llegan mensajes nuevos o el último crece.
+    // scrollOffset = Int.MAX_VALUE clampa al máximo del contenido — así el
+    // último mensaje queda anclado al BOTTOM del viewport (como un chat),
+    // no al top (que es el default de animateScrollToItem y producía el
+    // salto hacia arriba al enviar un mensaje corto).
     LaunchedEffect(chat.messages.size, chat.messages.lastOrNull()?.content?.length) {
-        val target = (chat.messages.size - 1).coerceAtLeast(0)
         if (chat.messages.isNotEmpty()) {
-            listState.animateScrollToItem(target)
+            val target = chat.messages.size - 1
+            listState.animateScrollToItem(target, scrollOffset = Int.MAX_VALUE)
         }
     }
 
