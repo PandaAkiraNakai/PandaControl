@@ -129,7 +129,7 @@ fun AppNav(app: PandaApp) {
             composable(Dest.Status.route) { StatusScreen(app = app) }
             composable(Dest.AI.route) { AIScreen(app = app) }
             composable(Dest.Media.route) {
-                MediaTabScreen(onNavigate = { route -> navController.navigate(route) })
+                MediaTabScreen(app = app, onNavigate = { route -> navController.navigate(route) })
             }
             composable(Dest.Modules.route) {
                 ModulesScreen(onNavigate = { route -> navController.navigate(route) })

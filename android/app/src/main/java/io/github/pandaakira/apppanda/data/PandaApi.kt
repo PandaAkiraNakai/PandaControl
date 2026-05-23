@@ -219,6 +219,9 @@ class PandaApi(
     suspend fun setDpms(on: Boolean) =
         action("/api/v1/screens/dpms/${if (on) "on" else "off"}")
 
+    suspend fun niriCmd(cmd: String) =
+        action("/api/v1/niri/cmd/$cmd")
+
     suspend fun mediaAction(player: String, act: String) =
         action("/api/v1/media/$player/$act")
 

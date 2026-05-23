@@ -459,6 +459,10 @@ class _Handler(BaseHTTPRequestHandler):
                     return
                 result = api.audio_set_sink(sink)
                 body = {"sink": sink, "result": result}
+            elif path.startswith("/api/v1/niri/cmd/"):
+                cmd = path[len("/api/v1/niri/cmd/"):]
+                result = api.niri_cmd(cmd)
+                body = {"cmd": cmd, "result": result}
             elif path.startswith("/api/v1/screens/dpms/"):
                 action = path[len("/api/v1/screens/dpms/"):]
                 if action not in ("on", "off"):

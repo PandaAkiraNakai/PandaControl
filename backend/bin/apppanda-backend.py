@@ -928,6 +928,32 @@ def niri_dpms(on: bool) -> str:
     return (stderr or stdout or f"exit {rc}")[:300]
 
 
+# Mapa de comandos expuestos al cliente Android (sección Comandos del tab
+# Media). Cada entrada se traduce a `niri msg action <args...>`. La whitelist
+# es estricta: el servidor 404ea cualquier id que no esté acá.
+NIRI_CMD_MAP: dict[str, list[str]] = {
+    "fullscreen-window":   ["action", "fullscreen-window"],
+    "close-window":        ["action", "close-window"],
+    "focus-column-right":  ["action", "focus-column-right"],
+    "focus-column-left":   ["action", "focus-column-left"],
+    "focus-workspace-down": ["action", "focus-workspace-down"],
+    "focus-workspace-up":   ["action", "focus-workspace-up"],
+    "maximize-column":     ["action", "maximize-column"],
+    "toggle-overview":     ["action", "toggle-overview"],
+    "media-workspace":     ["action", "spawn", "--", "media-workspace"],
+}
+
+
+def niri_cmd(cmd: str) -> str:
+    args = NIRI_CMD_MAP.get(cmd)
+    if args is None:
+        return f"comando desconocido: {cmd}"
+    rc, stdout, stderr = _niri_run(args)
+    if rc == 0:
+        return "ok"
+    return (stderr or stdout or f"exit {rc}")[:300]
+
+
 def audio_set_sink(sink: str) -> str:
     rc, _stdout, stderr = _pactl_run(["set-default-sink", sink])
     if rc != 0:
@@ -1350,6 +1376,7 @@ def main() -> None:
             niri_outputs=niri_outputs,
             niri_set_output=niri_set_output,
             niri_dpms=niri_dpms,
+            niri_cmd=niri_cmd,
             audio_sinks=audio_sinks,
             audio_default_sink=audio_default_sink,
             audio_set_sink=audio_set_sink,
