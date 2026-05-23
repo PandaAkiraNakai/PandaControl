@@ -43,6 +43,18 @@ install -m 0644 -o root -g root \
 # http_server.py local al binario.
 ln -sfn /usr/local/bin/http_server_panda.py /usr/local/bin/http_server.py
 
+# 2c. sudo_broker module (imported por el daemon cuando [sudo_app] enabled)
+echo "==> Installing /usr/local/bin/sudo_broker.py"
+install -m 0644 -o root -g root \
+    "$SRC_DIR/bin/sudo_broker.py" \
+    /usr/local/bin/sudo_broker.py
+
+# 2d. sudo-app-askpass binary (reemplazo de SUDO_ASKPASS)
+echo "==> Installing /usr/local/bin/sudo-app-askpass"
+install -m 0755 -o root -g root \
+    "$SRC_DIR/bin/sudo-app-askpass.py" \
+    /usr/local/bin/sudo-app-askpass
+
 # 3. systemd unit (con sustitución de __TARGET_USER__ / __TARGET_GROUP__)
 echo "==> Installing /etc/systemd/system/apppanda-backend.service"
 sed -e "s|__TARGET_USER__|$TARGET_USER|g" \

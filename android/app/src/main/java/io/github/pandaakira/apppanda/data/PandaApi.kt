@@ -170,6 +170,9 @@ class PandaApi(
     suspend fun wakeOnLan(alias: String) =
         action("/api/v1/net/wake/$alias")
 
+    suspend fun sudoDecision(rid: String, approved: Boolean) =
+        action("/api/v1/sudo/$rid/decision", body = mapOf("approved" to approved))
+
     /**
      * SSE stream. Lee líneas crudas del response, parsea `event:` y `data:`,
      * y emite cada evento deserializado. Si la conexión se cierra, el Flow

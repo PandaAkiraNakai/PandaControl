@@ -90,6 +90,12 @@ def load_config(path: str) -> dict:
     cfg["auth"]["tailscale"].setdefault("enabled", False)
     cfg["auth"]["tailscale"].setdefault("allowed_logins", [])
     cfg["auth"]["tailscale"].setdefault("whois_cache_s", 60)
+    cfg.setdefault("sudo_app", {})
+    cfg["sudo_app"].setdefault("enabled", False)
+    cfg["sudo_app"].setdefault("internal_token", "")
+    cfg["sudo_app"].setdefault("password_file", "/etc/apppanda-backend/sudo-password")
+    cfg["sudo_app"].setdefault("fallback_askpass", "/usr/local/bin/sudo-telegram-askpass")
+    cfg["sudo_app"].setdefault("approval_timeout_s", 60)
     cfg.setdefault("network", {})
     cfg["network"].setdefault("ping_hosts", ["1.1.1.1"])
     cfg.setdefault("services", {})
@@ -1096,13 +1102,14 @@ def execute_apply_updates() -> str:
 # ─── Context ─────────────────────────────────────────────────────────────────
 
 class Context:
-    def __init__(self, cfg, metrics, history, audit, broker, alerts=None):
+    def __init__(self, cfg, metrics, history, audit, broker, alerts=None, sudo=None):
         self.cfg = cfg
         self.metrics = metrics
         self.history = history
         self.audit = audit
         self.broker = broker
         self.alerts = alerts
+        self.sudo = sudo
 
 
 _ALERT_TITLES = {
@@ -1288,10 +1295,12 @@ def main() -> None:
     audit = Audit(cfg["audit"]["log_path"])
 
     from http_server import EventBroker, start_http_server
+    from sudo_broker import SudoBroker
     broker = EventBroker()
     alerts = Alerts(cfg)
+    sudo = SudoBroker()
 
-    ctx = Context(cfg, metrics, history, audit, broker, alerts=alerts)
+    ctx = Context(cfg, metrics, history, audit, broker, alerts=alerts, sudo=sudo)
 
     audit.log("start", pid=os.getpid(), config=CONFIG_PATH)
     print(

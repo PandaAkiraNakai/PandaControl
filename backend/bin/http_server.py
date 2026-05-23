@@ -216,6 +216,16 @@ class _Handler(BaseHTTPRequestHandler):
             return True
         return self._authed_via_token()
 
+    def _authed_sudo_internal(self) -> bool:
+        """Auth para endpoints internos llamados por sudo-app-askpass desde
+        el mismo host. Token configurado en [sudo_app].internal_token."""
+        expected = (self.api.ctx.cfg.get("sudo_app", {})
+                                       .get("internal_token") or "")
+        if not expected:
+            return False
+        h = self.headers.get("X-Internal-Token", "")
+        return bool(h) and hmac.compare_digest(h, expected)
+
     def _send_json(self, status: int, body, headers: dict | None = None) -> None:
         data = json.dumps(body, ensure_ascii=False, default=str).encode("utf-8")
         self.send_response(status)
@@ -307,6 +317,12 @@ class _Handler(BaseHTTPRequestHandler):
                 "kernel": _kernel(),
                 "boot_id": _boot_id(),
             })
+            return
+
+        # sudo wait endpoint: autenticación con token interno (no Tailscale)
+        # porque viene del askpass binary corriendo en el mismo host.
+        if path.startswith("/api/v1/sudo/") and path.endswith("/wait"):
+            self._handle_sudo_wait(path)
             return
 
         if not self._authed():
@@ -471,14 +487,50 @@ class _Handler(BaseHTTPRequestHandler):
             elif path == "/api/v1/updates/apply":
                 result = api.execute_apply_updates()
                 body = {"result": result}
+            elif path == "/api/v1/sudo/request":
+                # POST del askpass binary: autenticación por token interno
+                if not self._authed_sudo_internal():
+                    self._err(401, "internal token required")
+                    self._audit(path, 401)
+                    return
+                data = self._read_json_body()
+                rid = api.ctx.sudo.new_request(
+                    prompt=data.get("prompt", ""),
+                    command=data.get("command", ""),
+                )
+                api.ctx.broker.publish("sudo_request", {
+                    "rid": rid,
+                    "prompt": data.get("prompt", "")[:200],
+                    "command": data.get("command", "")[:300],
+                    "hostname": _hostname(),
+                    "timeout_s": api.ctx.cfg["sudo_app"]["approval_timeout_s"],
+                })
+                api.ctx.audit.log("sudo_request", rid=rid,
+                                  prompt=data.get("prompt", "")[:200])
+                body = {"rid": rid, "status": "pending"}
+            elif path.startswith("/api/v1/sudo/") and path.endswith("/decision"):
+                rid = path[len("/api/v1/sudo/"):-len("/decision")]
+                data = self._read_json_body()
+                approved = bool(data.get("approved"))
+                ok = api.ctx.sudo.decide(rid, approved)
+                api.ctx.audit.log("sudo_decision", rid=rid, approved=approved,
+                                  applied=ok)
+                if not ok:
+                    self._err(404, "request not found or already decided")
+                    self._audit(path, 404)
+                    return
+                body = {"rid": rid, "approved": approved}
             else:
                 self._err(404, "not found")
                 self._audit(path, 404)
                 return
 
-            r = (body.get("result") or "").lower() if isinstance(body, dict) else ""
-            if r not in ("ok", "started"):
-                status = 422
+            # Sólo aplica el check 422 si el endpoint devolvió un campo `result`.
+            # Endpoints como /sudo/request devuelven {rid, status} sin `result`.
+            if isinstance(body, dict) and "result" in body:
+                r = (body.get("result") or "").lower()
+                if r not in ("ok", "started"):
+                    status = 422
 
         except Exception as e:
             self._send_json(500, {"error": str(e)[:300]})
@@ -487,6 +539,31 @@ class _Handler(BaseHTTPRequestHandler):
 
         self._send_json(status, body)
         self._audit(path, status)
+
+    def _handle_sudo_wait(self, path: str) -> None:
+        """Long-poll desde sudo-app-askpass. /api/v1/sudo/{rid}/wait?timeout=60"""
+        if not self._authed_sudo_internal():
+            self._err(401, "internal token required")
+            self._audit(path, 401)
+            return
+        rid = path[len("/api/v1/sudo/"):-len("/wait")]
+        q = self._parse_qs()
+        try:
+            timeout_s = max(1.0, min(120.0, float(q.get("timeout", "60"))))
+        except ValueError:
+            timeout_s = 60.0
+        entry = self.api.ctx.sudo.wait_for_decision(rid, timeout_s)
+        if entry is None:
+            self._err(404, "request not found")
+            self._audit(path, 404)
+            return
+        body = {
+            "rid": rid,
+            "status": entry["status"],
+            "decided_at": entry["decided_at"],
+        }
+        self._send_json(200, body)
+        self._audit(path, 200)
 
     def _status_system(self) -> dict:
         m = self.api.ctx.metrics

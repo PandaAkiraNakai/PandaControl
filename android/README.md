@@ -1,4 +1,4 @@
-# AppPanda — Android
+# Panda Control — Android
 
 App Kotlin + Jetpack Compose que se conecta al backend `apppanda-backend`
 (en `~/appPanda/backend/`) para monitorear y controlar la torre desde el
@@ -60,7 +60,7 @@ O ponlo en Telegram/Drive y bájalo al celular.
 
 ## Primer arranque
 
-1. Abre AppPanda en el celular.
+1. Abre Panda Control en el celular.
 2. Ve a la pestaña **Setup** (icono engranaje).
 3. Ingresa:
    - **Host**: `100.64.0.5` (la IP Tailscale de tu torre — solo

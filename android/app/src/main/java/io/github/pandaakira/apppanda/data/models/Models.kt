@@ -283,4 +283,9 @@ data class SseEvent(
     val title: String? = null,
     @SerialName("value_str") val valueStr: String? = null,
     val snap: JsonElement? = null,
+    // sudo_request
+    val rid: String? = null,
+    val prompt: String? = null,
+    val command: String? = null,
+    @SerialName("timeout_s") val timeoutS: Int? = null,
 )

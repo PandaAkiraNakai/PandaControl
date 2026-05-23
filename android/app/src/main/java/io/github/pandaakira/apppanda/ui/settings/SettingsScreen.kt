@@ -169,7 +169,7 @@ fun SettingsScreen(app: PandaApp) {
         // ─── Acerca de ───────────────────────────────────────────────────
         PandaCard(title = "ABOUT", accent = PandaMagenta) {
             Text(
-                "AppPanda · panel para sergiotorre desde el celular.",
+                "Panda Control · panel para sergiotorre desde el celular.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface,
             )

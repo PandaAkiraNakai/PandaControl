@@ -1,4 +1,4 @@
-# AppPanda
+# Panda Control
 
 > Panel Android para controlar y monitorear tu PC Linux desde el celular,
 > a través de tu propia tailnet de Tailscale.
@@ -6,7 +6,7 @@
 ```
 ┌────────────┐         Tailscale         ┌──────────────────┐
 │  Android   │ ◄────  WireGuard tunnel ─►│   torre Linux    │
-│  AppPanda  │      HTTP REST + SSE      │ apppanda-backend │
+│  Panda Control  │      HTTP REST + SSE      │ apppanda-backend │
 └────────────┘                           └──────────────────┘
 ```
 

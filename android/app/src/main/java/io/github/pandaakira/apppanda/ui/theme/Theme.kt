@@ -24,7 +24,7 @@ private val PandaColors = darkColorScheme(
 )
 
 @Composable
-fun AppPandaTheme(
+fun PandaControlTheme(
     @Suppress("UNUSED_PARAMETER") darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {

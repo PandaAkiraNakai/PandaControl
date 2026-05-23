@@ -7,13 +7,17 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.TURN_SCREEN_ON" />
+    <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
 
     <application
         android:name=".PandaApp"
-        android:label="AppPanda"
+        android:label="Panda Control"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:theme="@style/Theme.AppPanda"
+        android:theme="@style/Theme.PandaControl"
         android:supportsRtl="true"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -24,14 +28,25 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:label="AppPanda"
-            android:theme="@style/Theme.AppPanda"
+            android:label="Panda Control"
+            android:theme="@style/Theme.PandaControl"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".sudo.SudoApprovalActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PandaControl"
+            android:showOnLockScreen="true"
+            android:turnScreenOn="true"
+            android:showWhenLocked="true"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:taskAffinity="" />
 
         <service
             android:name=".service.AlertsService"
