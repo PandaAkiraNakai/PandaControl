@@ -16,6 +16,7 @@ Eventos SSE publicados al broker:
 
 from __future__ import annotations
 
+import datetime
 import json
 import os
 import signal
@@ -26,6 +27,12 @@ import time
 import uuid
 from pathlib import Path
 from typing import Callable
+
+
+# Cuántos turnos (user+assistant pairs) re-inyectar de contexto cuando se
+# pierde la sesión. Heurística: ~20 turnos suelen ser un par de minutos de
+# chat y entran cómodos en el contexto de claude sin disparar el costo.
+CHAT_LOG_REINJECT_TURNS = 20
 
 
 TOOL_ICONS = {
@@ -88,6 +95,10 @@ class ClaudeRunner:
         self._current_turn: str | None = None
         self._thread: threading.Thread | None = None
 
+        # Buffer del texto del assistant acumulado durante el turno actual,
+        # para appendearlo al chat-log cuando termine ok.
+        self._assistant_buf: list[str] = []
+
     # ─── estado público ──────────────────────────────────────────────────
 
     @property
@@ -128,12 +139,13 @@ class ClaudeRunner:
         return {"result": "ok", "model": model or "default"}
 
     def reset(self) -> dict:
-        """Drop session_id (nueva conversación). Si hay un turno en curso,
-        lo cancela."""
+        """Drop session_id + truncate chat-log (nueva conversación de cero).
+        Si hay un turno en curso, lo cancela."""
         self._cancel_locked()
         with self._lock:
             self._session_id = None
         self._persist_state()
+        self._log_truncate()
         self._publish("ai_state", self.state())
         return {"result": "ok"}
 
@@ -176,8 +188,98 @@ class ClaudeRunner:
         if self._model:
             cmd.extend(["--model", self._model])
         cmd.extend(list(self.cfg.get("extra_args", [])))
-        cmd.append(prompt)
+        # Si no tenemos session_id pero hay chat-log persistido (la sesión
+        # se perdió o ai-state.json fue reseteado pero el log sobrevivió),
+        # prependemos los últimos N turnos como contexto para que claude
+        # no arranque sin memoria.
+        actual_prompt = (
+            self._build_context_prompt(prompt)
+            if not self._session_id
+            else prompt
+        )
+        cmd.append(actual_prompt)
         return cmd
+
+    # ─── chat-log persistence ────────────────────────────────────────────
+
+    def _log_path(self) -> Path:
+        return self._state_path.parent / "chat-log.jsonl"
+
+    def _log_append(self, role: str, text: str) -> None:
+        text = (text or "").strip()
+        if not text:
+            return
+        try:
+            p = self._log_path()
+            p.parent.mkdir(parents=True, exist_ok=True)
+            entry = {
+                "role": role,
+                "text": text,
+                "ts": datetime.datetime.now().isoformat(timespec="seconds"),
+            }
+            with open(p, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except OSError as e:
+            print(f"claude_runner: chat-log append falló: {e}", file=sys.stderr)
+
+    def _log_truncate(self) -> None:
+        try:
+            p = self._log_path()
+            if p.exists():
+                p.unlink()
+        except OSError as e:
+            print(f"claude_runner: chat-log truncate falló: {e}", file=sys.stderr)
+
+    def _log_read_recent(self, limit_turns: int) -> list[dict]:
+        """Devuelve las últimas 2*limit_turns entradas del log (cada par
+        user+assistant = un turno)."""
+        try:
+            p = self._log_path()
+            if not p.exists():
+                return []
+            with open(p, encoding="utf-8") as f:
+                lines = f.readlines()
+        except OSError:
+            return []
+        recent = lines[-(limit_turns * 2):]
+        out: list[dict] = []
+        for line in recent:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                out.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+        return out
+
+    def _build_context_prompt(self, current_prompt: str) -> str:
+        """Reconstruye los últimos N turnos del chat-log como bloque de
+        contexto prepended al prompt actual. Devuelve current_prompt sin
+        tocar si no hay log."""
+        recent = self._log_read_recent(CHAT_LOG_REINJECT_TURNS)
+        if not recent:
+            return current_prompt
+        parts = [
+            "[Contexto: la sesión anterior con este usuario se perdió, "
+            "pero estos son los últimos mensajes intercambiados. Continuá "
+            "la conversación desde acá.]",
+            "",
+        ]
+        for entry in recent:
+            role = entry.get("role", "?")
+            text = (entry.get("text") or "").strip()
+            if not text:
+                continue
+            if role == "user":
+                parts.append(f"Usuario: {text}")
+            elif role == "assistant":
+                parts.append(f"Asistente: {text}")
+            parts.append("")
+        parts.append("[Fin del contexto. Mensaje actual del usuario:]")
+        parts.append("")
+        parts.append(current_prompt)
+        return "\n".join(parts)
 
     def _spawn(self, cmd: list[str]) -> subprocess.Popen:
         env = os.environ.copy()
@@ -217,10 +319,70 @@ class ClaudeRunner:
 
     def _run_turn(self, turn_id: str, prompt: str) -> None:
         started_at = time.monotonic()
+        result: dict | None = None
+        try:
+            result = self._run_attempt(turn_id, prompt)
+
+            # Auto-recovery: si la sesión guardada ya no existe en disco,
+            # claude sale con "No conversation found with session ID: X".
+            # Limpiamos el id muerto y reintentamos: el segundo attempt
+            # spawn-eará sin -r y _build_cmd reinyectará el chat-log como
+            # contexto, así claude continúa la conversación.
+            if (
+                not result["ok"]
+                and result["session_not_found"]
+                and self._session_id is not None
+            ):
+                self._session_id = None
+                self._persist_state()
+                result = self._run_attempt(turn_id, prompt)
+
+            if result["new_session_id"]:
+                self._session_id = result["new_session_id"]
+                self._persist_state()
+
+            # Loguear sólo turnos completos: si terminó ok, persistimos
+            # el par (user, assistant) en el chat-log para reinyecciones
+            # futuras. Si falló, el turno no entra al log — la próxima
+            # reinyección no verá un user huérfano.
+            if result["ok"]:
+                assistant_text = "".join(self._assistant_buf).strip()
+                if assistant_text:
+                    self._log_append("user", prompt)
+                    self._log_append("assistant", assistant_text)
+        finally:
+            with self._lock:
+                self._proc = None
+                self._current_turn = None
+            self._assistant_buf = []
+            duration_s = time.monotonic() - started_at
+            self._publish("ai_done", {
+                "turn_id": turn_id,
+                "ok": result["ok"] if result else False,
+                "duration_s": round(duration_s, 2),
+                "session_id": self._session_id,
+                "error": (
+                    result["error_msg"] if result else "runner: turno abortado"
+                ),
+            })
+            self._publish("ai_state", self.state())
+
+    def _run_attempt(self, turn_id: str, prompt: str) -> dict:
+        """Una invocación a `claude -p`. Devuelve un dict con:
+        - ok: bool
+        - new_session_id: str | None (si init emitió uno)
+        - error_msg: str | None
+        - session_not_found: bool (si stderr/result indicó 'No conversation
+          found with session ID' — señal para auto-retry sin -r)
+        """
+        # Resetear buffer en cada attempt: si attempt 1 streameó texto
+        # parcial y falló, no queremos contaminar lo que registramos en
+        # el log con la respuesta de attempt 2.
+        self._assistant_buf = []
         new_session_id: str | None = None
         ok = False
         error_msg: str | None = None
-        proc: subprocess.Popen | None = None
+        session_not_found = False
         try:
             cmd = self._build_cmd(prompt)
             proc = self._spawn(cmd)
@@ -241,8 +403,13 @@ class ClaudeRunner:
                 elif etype == "assistant":
                     self._handle_assistant(turn_id, evt)
                 elif etype == "result":
-                    # algunos formatos vuelven 'result' al final con metadata
-                    pass
+                    if evt.get("subtype") == "error_during_execution":
+                        errs = evt.get("errors") or []
+                        for e in errs:
+                            if isinstance(e, str) and "No conversation found" in e:
+                                session_not_found = True
+                                error_msg = e
+                                break
             rc = proc.wait()
             stderr_tail = ""
             if proc.stderr is not None:
@@ -250,28 +417,20 @@ class ClaudeRunner:
                     stderr_tail = proc.stderr.read()[-500:]
                 except Exception:
                     pass
-            if rc == 0:
+            if stderr_tail and "No conversation found" in stderr_tail:
+                session_not_found = True
+            if rc == 0 and not session_not_found:
                 ok = True
-            else:
+            elif not error_msg:
                 error_msg = stderr_tail.strip() or f"claude exit {rc}"
         except Exception as e:
             error_msg = f"runner: {e}"
-        finally:
-            with self._lock:
-                self._proc = None
-                self._current_turn = None
-            if new_session_id:
-                self._session_id = new_session_id
-                self._persist_state()
-            duration_s = time.monotonic() - started_at
-            self._publish("ai_done", {
-                "turn_id": turn_id,
-                "ok": ok,
-                "duration_s": round(duration_s, 2),
-                "session_id": self._session_id,
-                "error": error_msg,
-            })
-            self._publish("ai_state", self.state())
+        return {
+            "ok": ok,
+            "new_session_id": new_session_id,
+            "error_msg": error_msg,
+            "session_not_found": session_not_found,
+        }
 
     def _handle_assistant(self, turn_id: str, evt: dict) -> None:
         msg = evt.get("message") or {}
@@ -281,6 +440,7 @@ class ClaudeRunner:
             if btype == "text":
                 txt = blk.get("text", "")
                 if txt:
+                    self._assistant_buf.append(txt)
                     self._publish("ai_chunk", {
                         "turn_id": turn_id,
                         "delta": txt,

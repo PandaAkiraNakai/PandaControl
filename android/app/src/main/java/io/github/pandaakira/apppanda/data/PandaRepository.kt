@@ -171,16 +171,14 @@ class PandaRepository(
     private fun updateAiState(
         busy: Boolean, sessionId: String?, model: String?, turnId: String?,
     ) {
-        // Si el backend reporta un session_id distinto al que tenemos en
-        // cache local, significa que arrancó conversación nueva (reset
-        // explícito o daemon perdió su state). Tirar los mensajes viejos.
+        // Los mensajes solo se limpian via aiClearMessages() (botón Nuevo).
+        // El backend ahora reinyecta el chat-log si pierde la sesión, así
+        // que un session_id cambiando no implica conversación nueva — la
+        // continuidad la mantiene la reinyección y aceptamos que el id se
+        // renueve en silencio.
         _aiChat.update { st ->
             val newSession = sessionId ?: st.sessionId
-            val sessionChanged = sessionId != null && st.sessionId != null &&
-                sessionId != st.sessionId
-            val newMessages = if (sessionChanged) emptyList() else st.messages
             st.copy(
-                messages = newMessages,
                 busy = busy,
                 sessionId = newSession,
                 model = model ?: st.model,
