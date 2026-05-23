@@ -969,12 +969,11 @@ def wol_send(target: str, cfg: dict) -> str:
 
 
 def steam_launch(appid: str, cfg: dict) -> str:
-    use_gamescope = (cfg.get("steam") or {}).get("use_gamescope", True)
-    gamescope = Path.home() / ".local/bin/gamescope-auto"
-    if use_gamescope and gamescope.exists():
-        cmd = [str(gamescope), f"steam://rungameid/{appid}"]
-    else:
-        cmd = ["steam", f"steam://rungameid/{appid}"]
+    # `steam <uri>` le pasa el URI a la instancia ya corriendo. Si el
+    # usuario tiene configurado gamescope a nivel de juego en Steam,
+    # se aplica automaticamente. Pasar steam:// como primer arg a
+    # gamescope-auto NO funciona — gamescope-auto wrappea binarios.
+    cmd = ["steam", f"steam://rungameid/{appid}"]
     uid = os.getuid()
     env = {**os.environ, "XDG_RUNTIME_DIR": f"/run/user/{uid}", "LC_ALL": "C"}
     full = ["systemd-run", "--user", "--collect", "--quiet", "--", *cmd]

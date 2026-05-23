@@ -72,6 +72,7 @@ class PandaRepository(
                             return@collect
                         }
                         _lastEventAt.value = System.currentTimeMillis()
+                        _lastError.value = null
                         resetBackoff()
                         if (evt.type != "hello") send(evt)
                     }
