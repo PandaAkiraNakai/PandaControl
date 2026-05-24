@@ -67,6 +67,8 @@ import kotlinx.coroutines.withContext
 
 // Sensibilidad del touchpad (px de cursor por px de dedo).
 private const val SENSITIVITY = 1.6f
+// Píxeles de desplazamiento vertical de dos dedos por cada "notch" de scroll.
+private const val SCROLL_STEP = 18f
 
 /** Acumulador de movimiento thread-safe que conserva la fracción sub-pixel:
  *  los movimientos lentos no se pierden por el redondeo a entero. Implementa
@@ -149,8 +151,8 @@ fun InputControlScreen(app: PandaApp) {
                     .border(1.dp, PandaGreen.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
                     // Gesto EXCLUSIVO: consume cada evento desde el `down`, así
                     // el verticalScroll del Column padre nunca participa y el
-                    // movimiento es libre en cualquier dirección (no trabado en
-                    // ejes ni entrecortado). Drag = mover; toque corto = clic.
+                    // movimiento es libre en cualquier dirección. Un dedo: drag
+                    // = mover, toque corto = clic. Dos dedos: scroll vertical.
                     .pointerInput(Unit) {
                         val slop = viewConfiguration.touchSlop
                         awaitEachGesture {
@@ -158,31 +160,63 @@ fun InputControlScreen(app: PandaApp) {
                             down.consume()
                             var travel = 0f
                             var isDrag = false
+                            var maxFingers = 1
+                            var scrollAcc = 0f
                             while (true) {
                                 val event = awaitPointerEvent()
-                                val change = event.changes.firstOrNull { it.id == down.id }
-                                    ?: break
-                                if (!change.pressed) {
-                                    change.consume()
-                                    // Toque corto sin arrastre → clic izquierdo.
-                                    if (!isDrag) fire { it.mouseClick("left") }
+                                val pressed = event.changes.filter { it.pressed }
+                                val fingers = pressed.size
+                                if (fingers > maxFingers) maxFingers = fingers
+
+                                if (fingers == 0) {
+                                    event.changes.forEach { it.consume() }
+                                    // Toque corto de un dedo sin arrastre → clic.
+                                    if (!isDrag && maxFingers == 1) {
+                                        fire { it.mouseClick("left") }
+                                    }
                                     break
                                 }
-                                val d = change.positionChange()
-                                travel += kotlin.math.hypot(d.x, d.y)
-                                if (travel > slop) isDrag = true
-                                if (isDrag && (d.x != 0f || d.y != 0f)) {
-                                    acc.add(d.x * SENSITIVITY, d.y * SENSITIVITY)
+
+                                // Leer los deltas ANTES de consumir: positionChange()
+                                // devuelve cero una vez consumido el evento.
+                                if (fingers >= 2) {
+                                    // Dos dedos → scroll: acumula el movimiento
+                                    // vertical promedio y manda un notch cada
+                                    // SCROLL_STEP px.
+                                    val dy = pressed.map { it.positionChange().y }
+                                        .average().toFloat()
+                                    scrollAcc += dy
+                                    while (scrollAcc <= -SCROLL_STEP) {
+                                        fire { it.mouseScroll("up") }
+                                        scrollAcc += SCROLL_STEP
+                                    }
+                                    while (scrollAcc >= SCROLL_STEP) {
+                                        fire { it.mouseScroll("down") }
+                                        scrollAcc -= SCROLL_STEP
+                                    }
+                                } else if (maxFingers < 2) {
+                                    // Un dedo (y nunca hubo dos en este gesto, para
+                                    // no mover el cursor al soltar un dedo del
+                                    // scroll) → mover.
+                                    val ch = event.changes.firstOrNull { it.id == down.id }
+                                    val d = ch?.positionChange()
+                                    if (d != null) {
+                                        travel += kotlin.math.hypot(d.x, d.y)
+                                        if (travel > slop) isDrag = true
+                                        if (isDrag && (d.x != 0f || d.y != 0f)) {
+                                            acc.add(d.x * SENSITIVITY, d.y * SENSITIVITY)
+                                        }
+                                    }
                                 }
-                                change.consume()
+                                event.changes.forEach { it.consume() }
                             }
                         }
                     },
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    "Desliza para mover · toca para clic\n" +
-                        "usa los botones para clic medio/derecho",
+                    "Un dedo: mover · toca para clic\n" +
+                        "Dos dedos: scroll · botones: clic medio/derecho",
                     style = MaterialTheme.typography.bodySmall,
                     color = PandaGreen.copy(alpha = 0.5f),
                     textAlign = TextAlign.Center,
