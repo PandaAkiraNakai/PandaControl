@@ -391,35 +391,6 @@ class _Handler(BaseHTTPRequestHandler):
         elif path == "/api/v1/files/download":
             self._files_download()
             return
-        elif path == "/api/v1/ai/state":
-            body = self._ai_state()
-        elif path == "/api/v1/browser/tabs":
-            avail = api.browser_cdp_available()
-            body = {
-                "available": avail,
-                "tabs": api.browser_tabs() if avail else [],
-            }
-        elif path == "/api/v1/browser/links":
-            target = (self._parse_qs().get("target") or "").strip()
-            if not target:
-                self._err(400, "falta el parámetro ?target=")
-                self._audit(path, 400)
-                return
-            body = {"target": target, "links": api.browser_links(target)}
-        elif path == "/api/v1/youtube/search":
-            q = (self._parse_qs().get("q") or "").strip()
-            if not q:
-                self._err(400, "falta el parámetro ?q=")
-                self._audit(path, 400)
-                return
-            body = {"query": q, "results": api.youtube_search(q)}
-        elif path == "/api/v1/web/search":
-            q = (self._parse_qs().get("q") or "").strip()
-            if not q:
-                self._err(400, "falta el parámetro ?q=")
-                self._audit(path, 400)
-                return
-            body = {"query": q, "results": api.web_search(q)}
         elif path == "/api/v1/events":
             self._stream_events()
             return
@@ -453,6 +424,12 @@ class _Handler(BaseHTTPRequestHandler):
                 self._err(428, "X-Confirm: true header required for this action")
                 self._audit(path, 428)
                 return
+
+        # Stream de mouse: body de streaming (chunked), se procesa línea a línea
+        # en vivo. No pasa por la lógica normal de _read_json_body.
+        if path == "/api/v1/input/mouse/stream":
+            self._input_mouse_stream()
+            return
 
         api = self.api
         body: dict = {}
@@ -523,96 +500,49 @@ class _Handler(BaseHTTPRequestHandler):
                 else:
                     result = api.mpris_action(action, player)
                 body = {"player": player, "action": action, "result": result}
-            elif path == "/api/v1/browser/open":
+            elif path == "/api/v1/input/mouse/move":
                 data = self._read_json_body()
-                url = (data.get("url") or "").strip()
-                if not url:
-                    self._err(400, "body needs {url: ...}")
+                try:
+                    dx = int(float(data.get("dx", 0)))
+                    dy = int(float(data.get("dy", 0)))
+                except (TypeError, ValueError):
+                    self._err(400, "body needs {dx, dy}")
                     self._audit(path, 400)
                     return
-                result = api.browser_open(url)
-                body = {"url": url, "result": result}
-            elif path == "/api/v1/browser/navigate":
+                result = api.input_mouse_move(dx, dy)
+                body = {"dx": dx, "dy": dy, "result": result}
+            elif path == "/api/v1/input/mouse/click":
                 data = self._read_json_body()
-                target = (data.get("target") or "").strip()
-                url = (data.get("url") or "").strip()
-                if not target or not url:
-                    self._err(400, "body needs {target, url}")
+                button = (data.get("button") or "left").strip()
+                result = api.input_mouse_click(button)
+                body = {"button": button, "result": result}
+            elif path == "/api/v1/input/mouse/scroll":
+                data = self._read_json_body()
+                direction = (data.get("direction") or "").strip()
+                if not direction:
+                    self._err(400, "body needs {direction}")
                     self._audit(path, 400)
                     return
-                result = api.browser_navigate(target, url)
-                body = {"target": target, "url": url, "result": result}
-            elif path in (
-                "/api/v1/browser/activate", "/api/v1/browser/close",
-                "/api/v1/browser/reload", "/api/v1/browser/back",
-                "/api/v1/browser/forward",
-            ):
+                result = api.input_mouse_scroll(direction)
+                body = {"direction": direction, "result": result}
+            elif path == "/api/v1/input/key":
                 data = self._read_json_body()
-                target = (data.get("target") or "").strip()
-                if not target:
-                    self._err(400, "body needs {target: ...}")
+                key = (data.get("key") or "").strip()
+                if not key:
+                    self._err(400, "body needs {key}")
                     self._audit(path, 400)
                     return
-                fn = {
-                    "/api/v1/browser/activate": api.browser_activate,
-                    "/api/v1/browser/close": api.browser_close,
-                    "/api/v1/browser/reload": api.browser_reload,
-                    "/api/v1/browser/back": api.browser_back,
-                    "/api/v1/browser/forward": api.browser_forward,
-                }[path]
-                result = fn(target)
-                body = {"target": target, "result": result}
-            elif path == "/api/v1/browser/scroll":
+                result = api.input_key_press(key)
+                body = {"key": key, "result": result}
+            elif path == "/api/v1/input/type":
                 data = self._read_json_body()
-                target = (data.get("target") or "").strip()
-                direction = (data.get("dir") or "").strip()
-                if not target or not direction:
-                    self._err(400, "body needs {target, dir}")
-                    self._audit(path, 400)
-                    return
-                result = api.browser_scroll(target, direction)
-                body = {"target": target, "dir": direction, "result": result}
-            elif path == "/api/v1/browser/click":
-                data = self._read_json_body()
-                target = (data.get("target") or "").strip()
-                text = (data.get("text") or "").strip()
-                if not target or not text:
-                    self._err(400, "body needs {target, text}")
-                    self._audit(path, 400)
-                    return
-                result = api.browser_click(target, text)
-                body = {"target": target, "result": result}
-            elif path == "/api/v1/browser/click_index":
-                data = self._read_json_body()
-                target = (data.get("target") or "").strip()
-                idx = data.get("idx")
-                if not target or idx is None:
-                    self._err(400, "body needs {target, idx}")
-                    self._audit(path, 400)
-                    return
-                result = api.browser_click_index(target, int(idx))
-                body = {"target": target, "idx": int(idx), "result": result}
-            elif path == "/api/v1/browser/type":
-                data = self._read_json_body()
-                target = (data.get("target") or "").strip()
                 text = data.get("text") or ""
-                submit = str(data.get("submit", "")).lower() in ("true", "1", "yes")
-                if not target or not text:
-                    self._err(400, "body needs {target, text}")
+                if not text:
+                    self._err(400, "body needs {text}")
                     self._audit(path, 400)
                     return
-                result = api.browser_type(target, text, submit)
-                body = {"target": target, "result": result}
-            elif path == "/api/v1/youtube/play":
-                data = self._read_json_body()
-                vid = (data.get("videoId") or "").strip()
-                target = (data.get("target") or "").strip() or None
-                if not vid:
-                    self._err(400, "body needs {videoId: ...}")
-                    self._audit(path, 400)
-                    return
-                result = api.youtube_play(vid, target)
-                body = {"videoId": vid, "result": result}
+                result = api.input_type_text(text)
+                body = {"result": result}
             elif path.startswith("/api/v1/apps/") and path.endswith("/launch"):
                 name = path[len("/api/v1/apps/"):-len("/launch")]
                 result = api.execute_app(name, api.ctx.cfg)
@@ -630,16 +560,6 @@ class _Handler(BaseHTTPRequestHandler):
                 body = {"result": result}
             elif path == "/api/v1/files/upload":
                 body = self._files_upload()
-            elif path == "/api/v1/ai/send":
-                data = self._read_json_body()
-                body = self._ai_send(data)
-            elif path == "/api/v1/ai/cancel":
-                body = self._ai_cancel()
-            elif path == "/api/v1/ai/reset":
-                body = self._ai_reset()
-            elif path == "/api/v1/ai/model":
-                data = self._read_json_body()
-                body = self._ai_set_model(data)
             elif path == "/api/v1/sudo/request":
                 # POST del askpass binary: autenticación por token interno
                 if not self._authed_sudo_internal():
@@ -659,7 +579,8 @@ class _Handler(BaseHTTPRequestHandler):
                     "timeout_s": api.ctx.cfg["sudo_app"]["approval_timeout_s"],
                 })
                 api.ctx.audit.log("sudo_request", rid=rid,
-                                  prompt=data.get("prompt", "")[:200])
+                                  prompt=data.get("prompt", "")[:200],
+                                  command=data.get("command", "")[:300])
                 body = {"rid": rid, "status": "pending"}
             elif path.startswith("/api/v1/sudo/") and path.endswith("/decision"):
                 rid = path[len("/api/v1/sudo/"):-len("/decision")]
@@ -692,6 +613,102 @@ class _Handler(BaseHTTPRequestHandler):
 
         self._send_json(status, body)
         self._audit(path, status)
+
+    # ─── Stream de mouse (POST con body chunked, baja latencia) ──────────────
+
+    # Tope de seguridad: sin tráfico en este lapso, se asume cliente muerto.
+    # El cliente manda un keepalive "0,0" mucho antes (cada ~14 s).
+    _MOUSE_STREAM_IDLE_S = 35
+
+    def _input_mouse_stream(self) -> None:
+        """Lee deltas de mouse de un body en streaming y los aplica al instante.
+        Cada línea es `dx,dy`. La conexión vive mientras el cliente la mantenga
+        abierta (mientras el módulo Control está en primer plano en el celu)."""
+        apply_move = self.api.input_mouse_move
+        # TCP_NODELAY para que cada delta se procese sin esperar buffering.
+        try:
+            self.connection.setsockopt(
+                socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except OSError:
+            pass
+        # Timeout de lectura: corta si el cliente desaparece sin cerrar (wifi).
+        try:
+            self.connection.settimeout(self._MOUSE_STREAM_IDLE_S)
+        except OSError:
+            pass
+
+        self._audit("/api/v1/input/mouse/stream", 200)
+        n = 0
+        buf = b""
+        try:
+            for data in self._iter_chunked_body():
+                buf += data
+                while b"\n" in buf:
+                    line, buf = buf.split(b"\n", 1)
+                    if self._apply_move_line(line, apply_move):
+                        n += 1
+        except (BrokenPipeError, ConnectionResetError, OSError, socket.timeout):
+            pass
+        try:
+            self.connection.settimeout(None)
+        except OSError:
+            pass
+        try:
+            self.api.ctx.audit.log("input_mouse_stream", moves=n)
+        except Exception:
+            pass
+        # El cliente ya cerró su lado; respondemos para cerrar limpio.
+        try:
+            self._send_json(200, {"result": "ok", "moves": n})
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+
+    def _iter_chunked_body(self):
+        """Itera los datos de un request body con Transfer-Encoding: chunked.
+        Si no es chunked, lee hasta Content-Length de una."""
+        te = self.headers.get("Transfer-Encoding", "").lower()
+        if "chunked" not in te:
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                length = 0
+            while length > 0:
+                chunk = self.rfile.read(min(4096, length))
+                if not chunk:
+                    return
+                length -= len(chunk)
+                yield chunk
+            return
+        while True:
+            size_line = self.rfile.readline()
+            if not size_line:
+                return
+            size_hex = size_line.strip().split(b";", 1)[0].strip()
+            try:
+                size = int(size_hex, 16)
+            except ValueError:
+                return
+            if size == 0:
+                self.rfile.readline()  # CRLF final de trailers
+                return
+            data = self.rfile.read(size)
+            self.rfile.readline()  # CRLF que cierra el chunk
+            yield data
+
+    @staticmethod
+    def _apply_move_line(line: bytes, apply_move) -> bool:
+        line = line.strip()
+        if not line:
+            return False
+        try:
+            sx, sy = line.split(b",", 1)
+            dx, dy = int(sx), int(sy)
+        except (ValueError, AttributeError):
+            return False
+        if dx or dy:
+            apply_move(dx, dy)
+            return True
+        return False
 
     def _handle_sudo_wait(self, path: str) -> None:
         """Long-poll desde sudo-app-askpass. /api/v1/sudo/{rid}/wait?timeout=60"""
@@ -1107,55 +1124,6 @@ class _Handler(BaseHTTPRequestHandler):
             "path": str(final_path),
             "size": length,
         }
-
-    # ─── AI (módulo IA / Claude Code) ────────────────────────────────────
-
-    def _ai(self):
-        return getattr(self.api.ctx, "ai", None)
-
-    def _ai_state(self) -> dict:
-        ai = self._ai()
-        if ai is None:
-            return {"enabled": False}
-        st = ai.state()
-        st["enabled"] = True
-        return st
-
-    def _ai_send(self, data: dict) -> dict:
-        ai = self._ai()
-        if ai is None:
-            return {"result": "error", "error": "ai disabled"}
-        prompt = (data.get("prompt") or "").strip()
-        if not prompt:
-            return {"result": "error", "error": "prompt vacío"}
-        res = ai.start(prompt)
-        if res.get("result") == "ok":
-            self.api.ctx.audit.log(
-                "ai_send", turn_id=res.get("turn_id"),
-                prompt_chars=len(prompt),
-            )
-        return res
-
-    def _ai_cancel(self) -> dict:
-        ai = self._ai()
-        if ai is None:
-            return {"result": "error", "error": "ai disabled"}
-        return ai.cancel()
-
-    def _ai_reset(self) -> dict:
-        ai = self._ai()
-        if ai is None:
-            return {"result": "error", "error": "ai disabled"}
-        return ai.reset()
-
-    def _ai_set_model(self, data: dict) -> dict:
-        ai = self._ai()
-        if ai is None:
-            return {"result": "error", "error": "ai disabled"}
-        model = data.get("model")
-        if isinstance(model, str):
-            model = model.strip() or None
-        return ai.set_model(model)
 
     def _stream_events(self) -> None:
         # En HTTP/1.1, una response sin Content-Length DEBE usar

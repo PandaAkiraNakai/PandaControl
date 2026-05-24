@@ -55,11 +55,11 @@ install -m 0644 -o root -g root \
     "$SRC_DIR/bin/claude_runner.py" \
     /usr/local/bin/claude_runner.py
 
-# 2f. browser module (imported por el daemon para control de Brave vía CDP)
-echo "==> Installing /usr/local/bin/browser.py"
+# 2f. input_control module (control de mouse y teclado vía ydotool / wtype)
+echo "==> Installing /usr/local/bin/input_control.py"
 install -m 0644 -o root -g root \
-    "$SRC_DIR/bin/browser.py" \
-    /usr/local/bin/browser.py
+    "$SRC_DIR/bin/input_control.py" \
+    /usr/local/bin/input_control.py
 
 # 2d. sudo-app-askpass binary (reemplazo de SUDO_ASKPASS)
 echo "==> Installing /usr/local/bin/sudo-app-askpass"

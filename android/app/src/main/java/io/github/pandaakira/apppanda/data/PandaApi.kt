@@ -1,11 +1,8 @@
 package io.github.pandaakira.apppanda.data
 
 import io.github.pandaakira.apppanda.data.models.ActionResult
-import io.github.pandaakira.apppanda.data.models.AISendResponse
-import io.github.pandaakira.apppanda.data.models.AIStateResponse
 import io.github.pandaakira.apppanda.data.models.AppsResponse
 import io.github.pandaakira.apppanda.data.models.AudioResponse
-import io.github.pandaakira.apppanda.data.models.BrowserTabsResponse
 import io.github.pandaakira.apppanda.data.models.DiskResponse
 import io.github.pandaakira.apppanda.data.models.FileUploadResponse
 import io.github.pandaakira.apppanda.data.models.FilesIndexResponse
@@ -19,7 +16,6 @@ import io.github.pandaakira.apppanda.data.models.MediaStatus
 import io.github.pandaakira.apppanda.data.models.MetricsResponse
 import io.github.pandaakira.apppanda.data.models.NetNeighborsResponse
 import io.github.pandaakira.apppanda.data.models.NetStatus
-import io.github.pandaakira.apppanda.data.models.PageLinksResponse
 import io.github.pandaakira.apppanda.data.models.ProcessesResponse
 import io.github.pandaakira.apppanda.data.models.ScreensResponse
 import io.github.pandaakira.apppanda.data.models.ServicesResponse
@@ -30,14 +26,13 @@ import io.github.pandaakira.apppanda.data.models.UpdatesResponse
 import io.github.pandaakira.apppanda.data.models.VersionResponse
 import io.github.pandaakira.apppanda.data.models.VpsListResponse
 import io.github.pandaakira.apppanda.data.models.VpsSummary
-import io.github.pandaakira.apppanda.data.models.WebSearchResponse
-import io.github.pandaakira.apppanda.data.models.YoutubeSearchResponse
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.DefaultRequest
 import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.timeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.client.request.HttpRequestBuilder
@@ -53,11 +48,24 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
-import io.ktor.http.encodeURLParameter
+import io.ktor.http.content.OutgoingContent
+import io.ktor.utils.io.ByteWriteChannel
 import io.ktor.utils.io.readUTF8Line
+import io.ktor.utils.io.writeStringUtf8
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.Json
+
+/** Fuente de deltas de mouse para [PandaApi.mouseStream]. */
+fun interface MouseDeltaSource {
+    /** Parte entera del movimiento acumulado; conserva la fracción sub-pixel. */
+    fun take(): Pair<Int, Int>
+}
+
+private const val STREAM_TICK_MS = 12L
+// A 12 ms/tick, ~14 s sin movimiento → keepalive.
+private const val STREAM_KEEPALIVE_TICKS = 1200
 
 class PandaApi(
     private val baseUrl: String,
@@ -149,68 +157,57 @@ class PandaApi(
     suspend fun mediaStatus(player: String): MediaStatus =
         client.get(url("/api/v1/media/$player/status")).body()
 
-    // ─── Navegador (Brave vía CDP) ─────────────────────────────────────────
-    suspend fun browserTabs(): BrowserTabsResponse =
-        client.get(url("/api/v1/browser/tabs")).body()
+    // ─── Control de mouse y teclado (ydotool / wtype) ──────────────────────
+    suspend fun mouseMove(dx: Int, dy: Int) =
+        action("/api/v1/input/mouse/move", body = mapOf("dx" to dx, "dy" to dy))
 
-    suspend fun browserOpen(target: String) =
-        action("/api/v1/browser/open", body = mapOf("url" to target))
+    /**
+     * Stream de movimiento de mouse: abre UNA conexión POST de larga duración
+     * y va escribiendo deltas `dx,dy\n` a cadencia fija, sin esperar ack por
+     * cada uno. Así la frecuencia es regular (no depende del RTT) y se siente
+     * suave. La función suspende hasta que la corrutina se cancela (al salir
+     * del módulo / mandar la app a background) — ahí cierra la conexión.
+     *
+     * `source.take()` devuelve el delta entero acumulado (conservando la
+     * fracción sub-pixel). Cuando no hay movimiento por un rato, manda un
+     * keepalive `0,0` para que el socket no muera por inactividad.
+     */
+    suspend fun mouseStream(source: MouseDeltaSource) {
+        client.post(url("/api/v1/input/mouse/stream")) {
+            // Stream largo: sin tope de socket para esta request puntual.
+            timeout { socketTimeoutMillis = Long.MAX_VALUE }
+            setBody(object : OutgoingContent.WriteChannelContent() {
+                override suspend fun writeTo(channel: ByteWriteChannel) {
+                    var idleTicks = 0
+                    while (true) {
+                        delay(STREAM_TICK_MS)
+                        val (dx, dy) = source.take()
+                        if (dx != 0 || dy != 0) {
+                            channel.writeStringUtf8("$dx,$dy\n")
+                            channel.flush()
+                            idleTicks = 0
+                        } else if (++idleTicks >= STREAM_KEEPALIVE_TICKS) {
+                            channel.writeStringUtf8("0,0\n")
+                            channel.flush()
+                            idleTicks = 0
+                        }
+                    }
+                }
+            })
+        }
+    }
 
-    suspend fun browserNavigate(target: String, url: String) =
-        action("/api/v1/browser/navigate", body = mapOf("target" to target, "url" to url))
+    suspend fun mouseClick(button: String) =
+        action("/api/v1/input/mouse/click", body = mapOf("button" to button))
 
-    suspend fun browserActivate(target: String) =
-        action("/api/v1/browser/activate", body = mapOf("target" to target))
+    suspend fun mouseScroll(direction: String) =
+        action("/api/v1/input/mouse/scroll", body = mapOf("direction" to direction))
 
-    suspend fun browserClose(target: String) =
-        action("/api/v1/browser/close", body = mapOf("target" to target))
+    suspend fun keyPress(key: String) =
+        action("/api/v1/input/key", body = mapOf("key" to key))
 
-    suspend fun browserReload(target: String) =
-        action("/api/v1/browser/reload", body = mapOf("target" to target))
-
-    suspend fun browserBack(target: String) =
-        action("/api/v1/browser/back", body = mapOf("target" to target))
-
-    suspend fun browserForward(target: String) =
-        action("/api/v1/browser/forward", body = mapOf("target" to target))
-
-    suspend fun browserScroll(target: String, dir: String) =
-        action("/api/v1/browser/scroll", body = mapOf("target" to target, "dir" to dir))
-
-    suspend fun browserClick(target: String, text: String) =
-        action("/api/v1/browser/click", body = mapOf("target" to target, "text" to text))
-
-    suspend fun browserLinks(target: String): PageLinksResponse =
-        client.get(url("/api/v1/browser/links?target=${target.encodeURLParameter()}")).body()
-
-    suspend fun browserClickIndex(target: String, idx: Int) =
-        action(
-            "/api/v1/browser/click_index",
-            body = mapOf("target" to target, "idx" to idx.toString()),
-        )
-
-    suspend fun browserType(target: String, text: String, submit: Boolean) =
-        action(
-            "/api/v1/browser/type",
-            body = mapOf(
-                "target" to target, "text" to text, "submit" to submit.toString(),
-            ),
-        )
-
-    suspend fun webSearch(query: String): WebSearchResponse =
-        client.get(url("/api/v1/web/search?q=${query.encodeURLParameter()}")).body()
-
-    suspend fun youtubeSearch(query: String): YoutubeSearchResponse =
-        client.get(url("/api/v1/youtube/search?q=${query.encodeURLParameter()}")).body()
-
-    suspend fun youtubePlay(videoId: String, target: String? = null) =
-        action(
-            "/api/v1/youtube/play",
-            body = buildMap {
-                put("videoId", videoId)
-                if (target != null) put("target", target)
-            },
-        )
+    suspend fun typeText(text: String) =
+        action("/api/v1/input/type", body = mapOf("text" to text))
 
     suspend fun netNeighbors(): NetNeighborsResponse =
         client.get(url("/api/v1/net/neighbors")).body()
@@ -309,29 +306,6 @@ class PandaApi(
 
     suspend fun sudoDecision(rid: String, approved: Boolean) =
         action("/api/v1/sudo/$rid/decision", body = mapOf("approved" to approved))
-
-    // ─── IA ───────────────────────────────────────────────────────────────
-
-    suspend fun aiState(): AIStateResponse =
-        client.get(url("/api/v1/ai/state")).body()
-
-    suspend fun aiSend(prompt: String): AISendResponse =
-        client.post(url("/api/v1/ai/send")) {
-            contentType(Application.Json)
-            setBody(mapOf("prompt" to prompt))
-        }.body()
-
-    suspend fun aiCancel(): ActionResult =
-        client.post(url("/api/v1/ai/cancel")).body()
-
-    suspend fun aiReset(): ActionResult =
-        client.post(url("/api/v1/ai/reset")).body()
-
-    suspend fun aiSetModel(model: String): ActionResult =
-        client.post(url("/api/v1/ai/model")) {
-            contentType(Application.Json)
-            setBody(mapOf("model" to model))
-        }.body()
 
     /**
      * SSE stream. Lee líneas crudas del response, parsea `event:` y `data:`,

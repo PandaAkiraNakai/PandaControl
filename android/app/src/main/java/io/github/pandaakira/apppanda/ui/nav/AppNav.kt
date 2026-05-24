@@ -18,8 +18,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.painterResource
-import io.github.pandaakira.apppanda.R
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -27,7 +25,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import io.github.pandaakira.apppanda.PandaApp
-import io.github.pandaakira.apppanda.ui.ai.AIScreen
 import io.github.pandaakira.apppanda.ui.home.HomeScreen
 import io.github.pandaakira.apppanda.ui.media.MediaTabScreen
 import io.github.pandaakira.apppanda.ui.files.FilesScreen
@@ -53,16 +50,14 @@ private sealed class Dest(
     val route: String,
     val label: String,
     val icon: ImageVector? = null,
-    val iconRes: Int? = null,
 ) {
     data object Home : Dest("home", "Home", icon = Icons.Outlined.Dashboard)
     data object Status : Dest("status", "Status", icon = Icons.Outlined.Analytics)
-    data object AI : Dest("ai", "IA", iconRes = R.drawable.ic_anthropic)
     data object Media : Dest("media-tab", "Media", icon = Icons.Outlined.Bolt)
     data object Modules : Dest("modules", "Modules", icon = Icons.Outlined.Apps)
 }
 
-private val tabs = listOf(Dest.Home, Dest.Status, Dest.AI, Dest.Media, Dest.Modules)
+private val tabs = listOf(Dest.Home, Dest.Status, Dest.Media, Dest.Modules)
 
 @Composable
 fun AppNav(app: PandaApp) {
@@ -97,15 +92,8 @@ fun AppNav(app: PandaApp) {
                                 }
                             },
                             icon = {
-                                when {
-                                    dest.iconRes != null -> Icon(
-                                        painter = painterResource(dest.iconRes),
-                                        contentDescription = dest.label,
-                                    )
-                                    dest.icon != null -> Icon(
-                                        dest.icon,
-                                        contentDescription = dest.label,
-                                    )
+                                dest.icon?.let {
+                                    Icon(it, contentDescription = dest.label)
                                 }
                             },
                             label = { Text(dest.label, style = MaterialTheme.typography.labelSmall) },
@@ -127,7 +115,6 @@ fun AppNav(app: PandaApp) {
                 )
             }
             composable(Dest.Status.route) { StatusScreen(app = app) }
-            composable(Dest.AI.route) { AIScreen(app = app) }
             composable(Dest.Media.route) {
                 MediaTabScreen(app = app, onNavigate = { route -> navController.navigate(route) })
             }
@@ -138,8 +125,8 @@ fun AppNav(app: PandaApp) {
             // Sub-pantallas (accesibles desde Media o Modules)
             composable("media") { MediaScreen(app = app) }
             composable("audio") { AudioScreen(app = app) }
-            composable("browser") {
-                io.github.pandaakira.apppanda.ui.browser.BrowserScreen(app = app)
+            composable("input") {
+                io.github.pandaakira.apppanda.ui.input.InputControlScreen(app = app)
             }
             composable("displays") { DisplaysScreen(app = app) }
             composable("apps") { AppsScreen(app = app) }

@@ -92,6 +92,11 @@ def main() -> None:
 
     prompt = sys.argv[1] if len(sys.argv) > 1 else ""
     command = os.environ.get("SUDO_COMMAND", "")
+    sudo_user = os.environ.get("SUDO_USER", "")
+    # Si sudo no expone SUDO_COMMAND al askpass, intentar parsear desde el prompt
+    # o marcar con el usuario para dar contexto mínimo.
+    if not command and sudo_user:
+        command = f"(usuario: {sudo_user})"
     base = backend_base(cfg)
 
     # 1) Registrar request

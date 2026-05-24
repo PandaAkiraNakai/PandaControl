@@ -28,7 +28,6 @@ class Settings(private val context: Context) {
         val BASE_URL = stringPreferencesKey("base_url")
         val TOKEN = stringPreferencesKey("token")
         val PUSH_ENABLED = booleanPreferencesKey("push_enabled")
-        val AI_CHAT = stringPreferencesKey("ai_chat_json")
         // Categorías de notificación silenciadas (ids de NotifCategory).
         // Guardamos las APAGADAS para que cualquier categoría nueva que se
         // agregue después aparezca encendida por defecto.
@@ -46,11 +45,6 @@ class Settings(private val context: Context) {
         prefs[Keys.PUSH_ENABLED] ?: false
     }
 
-    /** JSON serializado del AIChatState. Vacío = sin chat persistido. */
-    val aiChat: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[Keys.AI_CHAT].orEmpty()
-    }
-
     /** Ids de NotifCategory silenciados. Vacío = todas las categorías activas. */
     val mutedNotifs: Flow<Set<String>> = context.dataStore.data.map { prefs ->
         prefs[Keys.MUTED_NOTIFS] ?: emptySet()
@@ -63,10 +57,6 @@ class Settings(private val context: Context) {
             if (enabled) cur.remove(id) else cur.add(id)
             prefs[Keys.MUTED_NOTIFS] = cur
         }
-    }
-
-    suspend fun saveAiChat(json: String) {
-        context.dataStore.edit { prefs -> prefs[Keys.AI_CHAT] = json }
     }
 
     suspend fun save(baseUrl: String, token: String) {

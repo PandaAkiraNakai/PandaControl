@@ -176,60 +176,6 @@ data class ScreensResponse(
 data class MediaPlayersResponse(val players: List<String>)
 
 @Serializable
-data class BrowserTab(
-    val id: String,
-    val title: String = "",
-    val url: String = "",
-)
-
-@Serializable
-data class BrowserTabsResponse(
-    val available: Boolean = false,
-    val tabs: List<BrowserTab> = emptyList(),
-)
-
-@Serializable
-data class YtVideo(
-    val id: String,
-    val title: String = "",
-    val channel: String = "",
-    val duration: String = "",
-    val views: String = "",
-    val thumbnail: String = "",
-)
-
-@Serializable
-data class YoutubeSearchResponse(
-    val query: String = "",
-    val results: List<YtVideo> = emptyList(),
-)
-
-@Serializable
-data class WebResult(
-    val title: String = "",
-    val url: String = "",
-    val description: String = "",
-)
-
-@Serializable
-data class WebSearchResponse(
-    val query: String = "",
-    val results: List<WebResult> = emptyList(),
-)
-
-@Serializable
-data class PageLink(
-    val idx: Int,
-    val label: String = "",
-)
-
-@Serializable
-data class PageLinksResponse(
-    val target: String = "",
-    val links: List<PageLink> = emptyList(),
-)
-
-@Serializable
 data class MediaStatus(
     val status: String = "?",
     val title: String = "",
@@ -315,23 +261,6 @@ data class FilesListResponse(
 )
 
 @Serializable
-data class AIStateResponse(
-    val enabled: Boolean = false,
-    val busy: Boolean = false,
-    @SerialName("session_id") val sessionId: String? = null,
-    val model: String = "default",
-    @SerialName("working_dir") val workingDir: String = "",
-    @SerialName("turn_id") val turnId: String? = null,
-)
-
-@Serializable
-data class AISendResponse(
-    val result: String = "",
-    val error: String? = null,
-    @SerialName("turn_id") val turnId: String? = null,
-)
-
-@Serializable
 data class FileUploadResponse(
     val result: String = "",
     val error: String? = null,
@@ -396,16 +325,4 @@ data class SseEvent(
     val prompt: String? = null,
     val command: String? = null,
     @SerialName("timeout_s") val timeoutS: Int? = null,
-    // ai_chunk / ai_tool / ai_done / ai_state
-    @SerialName("turn_id") val turnId: String? = null,
-    val delta: String? = null,
-    val tool: String? = null,
-    val icon: String? = null,
-    val summary: String? = null,
-    val ok: Boolean? = null,
-    @SerialName("duration_s") val durationS: Double? = null,
-    val error: String? = null,
-    @SerialName("session_id") val sessionId: String? = null,
-    val busy: Boolean? = null,
-    val model: String? = null,
 )

@@ -124,13 +124,6 @@ def load_config(path: str) -> dict:
     # que corre el daemon.
     cfg["files"].setdefault("shared_dirs", ["~/Descargas"])
     cfg["files"].setdefault("max_upload_mb", 500)
-    cfg.setdefault("ai", {})
-    cfg["ai"].setdefault("enabled", True)
-    cfg["ai"].setdefault("claude_bin", "claude")
-    cfg["ai"].setdefault("working_dir", "~")
-    cfg["ai"].setdefault("extra_args", [])
-    cfg["ai"].setdefault("default_model", None)  # opus|sonnet|haiku|None
-    cfg["ai"].setdefault("state_path", "/var/lib/apppanda-backend/ai-state.json")
     cfg["steam"].setdefault("exclude_appids", [
         "228980", "1070560", "1391110", "1493710", "1628350", "4183110",
     ])
@@ -1159,7 +1152,7 @@ def execute_apply_updates() -> str:
 
 class Context:
     def __init__(self, cfg, metrics, history, audit, broker,
-                 alerts=None, sudo=None, ai=None):
+                 alerts=None, sudo=None):
         self.cfg = cfg
         self.metrics = metrics
         self.history = history
@@ -1167,7 +1160,6 @@ class Context:
         self.broker = broker
         self.alerts = alerts
         self.sudo = sudo
-        self.ai = ai
 
 
 _ALERT_TITLES = {
@@ -1354,28 +1346,13 @@ def main() -> None:
 
     from http_server import EventBroker, start_http_server
     from sudo_broker import SudoBroker
-    from claude_runner import ClaudeRunner
-    import browser
+    import input_control
     broker = EventBroker()
     alerts = Alerts(cfg)
     sudo = SudoBroker()
 
-    ai = None
-    if cfg.get("ai", {}).get("enabled", True):
-        ai_cfg = dict(cfg["ai"])
-        # Si default_model está seteado y no hay model persistido todavía,
-        # ClaudeRunner lo levantará desde state_path. Solo respetamos
-        # default_model si no hay state previo.
-        ai = ClaudeRunner(
-            ai_cfg,
-            publish=broker.publish,
-            state_path=ai_cfg["state_path"],
-        )
-        if ai.model is None and ai_cfg.get("default_model"):
-            ai.set_model(ai_cfg["default_model"])
-
     ctx = Context(cfg, metrics, history, audit, broker,
-                  alerts=alerts, sudo=sudo, ai=ai)
+                  alerts=alerts, sudo=sudo)
 
     audit.log("start", pid=os.getpid(), config=CONFIG_PATH)
     print(
@@ -1413,23 +1390,11 @@ def main() -> None:
             execute_svc=execute_svc,
             execute_app=execute_app,
             execute_apply_updates=execute_apply_updates,
-            browser_cdp_available=browser.cdp_available,
-            browser_tabs=browser.list_tabs,
-            browser_open=browser.open_url,
-            browser_navigate=browser.navigate,
-            browser_activate=browser.activate,
-            browser_close=browser.close_tab,
-            browser_reload=browser.reload,
-            browser_back=browser.go_back,
-            browser_forward=browser.go_forward,
-            browser_scroll=browser.scroll,
-            browser_click=browser.click_text,
-            browser_click_index=browser.click_index,
-            browser_links=browser.page_links,
-            browser_type=browser.type_text,
-            web_search=browser.web_search,
-            youtube_search=browser.youtube_search,
-            youtube_play=browser.youtube_play,
+            input_mouse_move=input_control.mouse_move,
+            input_mouse_click=input_control.mouse_click,
+            input_mouse_scroll=input_control.mouse_scroll,
+            input_key_press=input_control.key_press,
+            input_type_text=input_control.type_text,
         )
         start_http_server(
             api, broker,

@@ -26,8 +26,8 @@ import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.Mouse
 import androidx.compose.material.icons.outlined.MusicNote
-import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.SportsEsports
 import androidx.compose.material.icons.outlined.Tv
 import androidx.compose.material3.Icon
@@ -98,8 +98,8 @@ fun MediaTabScreen(app: PandaApp, onNavigate: (String) -> Unit) {
     val tiles = listOf(
         MediaEntry("media", "Reproductor", "MPRIS · play/pause · seek · fullscreen",
             Icons.Outlined.Bolt, PandaMagenta),
-        MediaEntry("browser", "Navegador", "Brave · buscar · YouTube · pestañas",
-            Icons.Outlined.Public, PandaGreen),
+        MediaEntry("input", "Control", "mouse · teclado · touchpad",
+            Icons.Outlined.Mouse, PandaGreen),
         MediaEntry("audio", "Audio", "sinks pactl · cambiar default",
             Icons.Outlined.MusicNote, PandaOrange),
         MediaEntry("displays", "Pantallas", "niri outputs · DPMS",

@@ -120,30 +120,6 @@ exclude_appids = [
     "4183110",
 ]
 
-# ─── AI (módulo IA — chat con Claude Code corriendo localmente) ─────────
-#
-# El daemon spawnea `claude -p --output-format stream-json --verbose` por
-# turno, parsea events line-by-line y publica chunks via SSE (eventos
-# ai_chunk / ai_tool / ai_done / ai_state). El session_id se persiste en
-# state_path para que /new permita resumir conversaciones tras reinicios.
-#
-# El binary `claude` debe existir en PATH del usuario que corre el daemon
-# (sergioc). Si vivís en ~/.local/bin, el runner ya lo agrega al PATH del
-# subprocess automáticamente.
-#
-# working_dir es el cwd con el que se lanza claude — afecta qué archivos
-# encuentra cuando Sergio pide cosas tipo "leé tal archivo".
-#
-# default_model: opus | sonnet | haiku | (string vacío = sin override).
-# El usuario lo puede cambiar después desde la app via POST /api/v1/ai/model.
-[ai]
-enabled = true
-claude_bin = "claude"
-working_dir = "~"
-extra_args = []
-default_model = ""
-state_path = "/var/lib/apppanda-backend/ai-state.json"
-
 # ─── Files (módulo Archivos) ─────────────────────────────────────────────
 #
 # Permite a la app listar/descargar archivos de los shared_dirs y subir

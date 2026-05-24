@@ -236,16 +236,21 @@ class AlertsService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
+        val shortDesc = when {
+            command.isNotBlank() -> command.take(80)
+            prompt.isNotBlank() -> prompt.take(80)
+            else -> "Solicitud de elevación de privilegios"
+        }
+        val bigText = buildString {
+            if (command.isNotBlank()) append("$ $command\n\n")
+            if (prompt.isNotBlank()) append("$prompt\n\n")
+            append("Timeout: ${timeoutS}s")
+        }
         val notif = NotificationCompat.Builder(this, CHANNEL_SUDO)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("🔐 Sudo en la torre")
-            .setContentText("Tocá para aprobar o rechazar (${timeoutS}s)")
-            .setStyle(
-                NotificationCompat.BigTextStyle().bigText(
-                    "${prompt.ifBlank { "Solicitud de elevación de privilegios" }}\n\n" +
-                        (if (command.isNotBlank()) "comando: $command" else ""),
-                ),
-            )
+            .setContentTitle("🔐 Sudo — ¿aprobar?")
+            .setContentText(shortDesc)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(bigText))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)

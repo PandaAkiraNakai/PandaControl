@@ -42,7 +42,7 @@ PC; si no, no existe para nadie más.
 | **Status** | CPU, RAM, disco, red, temperaturas, GPUs y estado SMART en vivo. |
 | **Trends** | Gráficas históricas 1h / 6h / 24h, dibujadas nativamente en Canvas. |
 | **Media** | Control MPRIS (play/pausa, seek ±15s, fullscreen del video), cambiar el sink de audio, prender/apagar pantallas (DPMS), lanzar apps GUI, lanzar juegos de Steam y comandos del WM `niri` desde una whitelist estricta. |
-| **Navegador** | Control de Brave por Chrome DevTools Protocol: abrir URLs o lanzar una búsqueda en el PC; buscar en la web y **elegir un link** desde el celular; buscar y reproducir YouTube sin abrir el navegador; gestionar pestañas (foco, atrás/adelante, recargar, cerrar); y controlar la página activa — scroll (rueda real, funciona con scroll interno), clic por texto, escribir (con setter nativo para inputs React/Vue) y **listar los elementos clicables** de la página, incluso pósters o banners sin texto (la etiqueta sale del `aria-label`/`alt` de la imagen). |
+| **Control** | Mouse y teclado remotos: un **touchpad** que mueve el cursor por deltas, clic izquierdo/medio/derecho, scroll, teclas especiales y atajos (Esc, Tab, flechas, Ctrl+C/V/Z, Alt+Tab, etc.) y escritura de texto libre. Mouse vía `ydotool`, teclado vía `wtype`. |
 | **IA** | Chat con [Claude Code](https://claude.com/claude-code) corriendo en tu PC, con sesión persistente y reinyección de contexto al reconectar. |
 | **Sistema** | Apagar / reiniciar / suspender / bloquear (con confirmación), listar y matar procesos, gestionar servicios (start/stop/restart), ver logs de `journalctl`, revisar y aplicar actualizaciones (`checkupdates`), ver vecinos de la LAN y consultar tus VPS por SSH. |
 | **Archivos** | Listar, descargar y subir archivos de los directorios que tú compartas. |
@@ -58,14 +58,16 @@ PC; si no, no existe para nadie más.
 - **Tailscale** instalado y conectado a tu tailnet.
 - *Opcionales*, según las funciones que quieras usar: `lm_sensors` (temps),
   `smartmontools` (SMART), `pacman-contrib` (`checkupdates`), `pactl`
-  (audio), `niri` (control del WM), `playerctl` (MPRIS), `wtype` (inyección
-  de teclas) y `polkit` (acciones que requieren privilegios). El daemon
-  arranca igual aunque falte cualquiera de estos; solo se desactiva la
-  función correspondiente.
-- *Para el módulo Navegador*: Brave (o Chromium) lanzado con
-  `--remote-debugging-port=9222 --remote-allow-origins=*`, escuchando solo
-  en `127.0.0.1`. La forma cómoda es ponerlo en `~/.config/brave-flags.conf`
-  para que el wrapper lo aplique en cada arranque.
+  (audio), `niri` (control del WM), `playerctl` (MPRIS), `wtype` (teclado /
+  inyección de teclas), `ydotool` (mouse) y `polkit` (acciones que requieren
+  privilegios). El daemon arranca igual aunque falte cualquiera de estos;
+  solo se desactiva la función correspondiente.
+- *Para el módulo Control* (mouse): `ydotool` con su daemon `ydotoold`
+  corriendo. La forma cómoda es como servicio de usuario:
+  `systemctl --user enable --now ydotoold`. El daemon crea su socket en
+  `$XDG_RUNTIME_DIR/.ydotool_socket`, donde `ydotool` lo encuentra solo.
+  Necesita acceso a `/dev/uinput` (típicamente sumando tu usuario al grupo
+  `input`). El teclado usa `wtype`, que no necesita daemon.
 
 **Para compilar la app:**
 
