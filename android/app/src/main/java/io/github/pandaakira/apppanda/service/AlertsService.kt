@@ -37,7 +37,7 @@ import kotlinx.coroutines.launch
  * PandaRepository.events) y muestra notificaciones del sistema para
  * alertas, servicios failed, boot, resume.
  *
- * Se activa/desactiva desde Setup con el toggle "Notificaciones push".
+ * Se activa/desactiva desde Ajustes con el toggle "Notificaciones push".
  * Al desactivar, llamar STOP con startService(intent.setAction(STOP_ACTION))
  * y el service se detiene a sí mismo.
  */

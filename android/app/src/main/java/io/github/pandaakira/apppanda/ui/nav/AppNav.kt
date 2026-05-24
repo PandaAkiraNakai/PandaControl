@@ -4,9 +4,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Analytics
-import androidx.compose.material.icons.outlined.Apps
-import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Dashboard
+import androidx.compose.material.icons.outlined.Dns
+import androidx.compose.material.icons.outlined.SettingsRemote
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -29,35 +29,31 @@ import io.github.pandaakira.apppanda.ui.home.HomeScreen
 import io.github.pandaakira.apppanda.ui.media.MediaTabScreen
 import io.github.pandaakira.apppanda.ui.files.FilesScreen
 import io.github.pandaakira.apppanda.ui.more.AppsScreen
-import io.github.pandaakira.apppanda.ui.more.AudioScreen
 import io.github.pandaakira.apppanda.ui.more.DisplaysScreen
 import io.github.pandaakira.apppanda.ui.more.GamesScreen
-import io.github.pandaakira.apppanda.ui.more.LogsScreen
 import io.github.pandaakira.apppanda.ui.more.MediaScreen
 import io.github.pandaakira.apppanda.ui.more.ModulesScreen
 import io.github.pandaakira.apppanda.ui.more.NetworkScreen
 import io.github.pandaakira.apppanda.ui.more.PowerScreen
-import io.github.pandaakira.apppanda.ui.more.ProcessesScreen
 import io.github.pandaakira.apppanda.ui.more.ServicesListScreen
 import io.github.pandaakira.apppanda.ui.more.UpdatesScreen
 import io.github.pandaakira.apppanda.ui.more.VpsScreen
 import io.github.pandaakira.apppanda.ui.onboarding.OnboardingScreen
-import io.github.pandaakira.apppanda.ui.status.StatusScreen
+import io.github.pandaakira.apppanda.ui.status.MonitorScreen
 import io.github.pandaakira.apppanda.ui.sudo.SudoApprovalOverlay
-import io.github.pandaakira.apppanda.ui.trends.TrendsScreen
 
 private sealed class Dest(
     val route: String,
     val label: String,
     val icon: ImageVector? = null,
 ) {
-    data object Home : Dest("home", "Home", icon = Icons.Outlined.Dashboard)
-    data object Status : Dest("status", "Status", icon = Icons.Outlined.Analytics)
-    data object Media : Dest("media-tab", "Media", icon = Icons.Outlined.Bolt)
-    data object Modules : Dest("modules", "Modules", icon = Icons.Outlined.Apps)
+    data object Home : Dest("home", "Inicio", icon = Icons.Outlined.Dashboard)
+    data object Monitor : Dest("monitor", "Monitor", icon = Icons.Outlined.Analytics)
+    data object Control : Dest("control", "Control", icon = Icons.Outlined.SettingsRemote)
+    data object Sistema : Dest("sistema", "Sistema", icon = Icons.Outlined.Dns)
 }
 
-private val tabs = listOf(Dest.Home, Dest.Status, Dest.Media, Dest.Modules)
+private val tabs = listOf(Dest.Home, Dest.Monitor, Dest.Control, Dest.Sistema)
 
 @Composable
 fun AppNav(app: PandaApp) {
@@ -114,17 +110,16 @@ fun AppNav(app: PandaApp) {
                     onGoSetup = { navController.navigate("onboarding") },
                 )
             }
-            composable(Dest.Status.route) { StatusScreen(app = app) }
-            composable(Dest.Media.route) {
+            composable(Dest.Monitor.route) { MonitorScreen(app = app) }
+            composable(Dest.Control.route) {
                 MediaTabScreen(app = app, onNavigate = { route -> navController.navigate(route) })
             }
-            composable(Dest.Modules.route) {
+            composable(Dest.Sistema.route) {
                 ModulesScreen(onNavigate = { route -> navController.navigate(route) })
             }
 
-            // Sub-pantallas (accesibles desde Media o Modules)
+            // Sub-pantallas (accesibles desde Control o Sistema)
             composable("media") { MediaScreen(app = app) }
-            composable("audio") { AudioScreen(app = app) }
             composable("input") {
                 io.github.pandaakira.apppanda.ui.input.InputControlScreen(app = app)
             }
@@ -132,11 +127,8 @@ fun AppNav(app: PandaApp) {
             composable("apps") { AppsScreen(app = app) }
             composable("games") { GamesScreen(app = app) }
 
-            composable("trends") { TrendsScreen(app = app) }
-            composable("processes") { ProcessesScreen(app = app) }
             composable("services") { ServicesListScreen(app = app) }
             composable("files") { FilesScreen(app = app) }
-            composable("logs") { LogsScreen(app = app) }
             composable("updates") { UpdatesScreen(app = app) }
             composable("network") { NetworkScreen(app = app) }
             composable("vps") { VpsScreen(app = app) }

@@ -185,9 +185,6 @@ private fun fmtUptime(secs: Double): String {
 @Composable
 private fun HomeHeader(app: PandaApp, hostname: String?) {
     val lastEventAt by app.repository.lastEventAt.collectAsState()
-    val lastByteAt by app.repository.lastByteAt.collectAsState()
-    val lastError by app.repository.lastError.collectAsState()
-    val parseErrors by app.repository.parseErrorCount.collectAsState()
     var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -196,36 +193,22 @@ private fun HomeHeader(app: PandaApp, hostname: String?) {
         }
     }
     val connected = lastEventAt > 0 && (nowMs - lastEventAt) < 30_000
-    androidx.compose.foundation.layout.Column {
-        androidx.compose.foundation.layout.Row(
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Canvas(modifier = Modifier.size(10.dp)) {
-                drawCircle(if (connected) PandaGreen else PandaRed)
-            }
-            Spacer(Modifier.width(8.dp))
-            Text(
-                ">> PANDA // ${hostname ?: "—"}",
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Canvas(modifier = Modifier.size(10.dp)) {
+            drawCircle(if (connected) PandaGreen else PandaRed)
         }
-        // Diagnóstico del SSE (visible mientras debugeamos)
-        val byteAge = if (lastByteAt > 0) "${(nowMs - lastByteAt) / 1000}s" else "—"
-        val evtAge = if (lastEventAt > 0) "${(nowMs - lastEventAt) / 1000}s" else "—"
+        Spacer(Modifier.width(8.dp))
         Text(
-            "byte:$byteAge · evt:$evtAge · parse_err:$parseErrors",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            ">> PANDA // ${hostname ?: "—"}",
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.primary,
         )
-        lastError?.let {
-            Text(
-                "err: $it",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-                maxLines = 2,
-            )
-        }
+        Spacer(Modifier.width(8.dp))
+        Text(
+            if (connected) "conectado" else "sin conexión",
+            style = MaterialTheme.typography.labelSmall,
+            color = if (connected) PandaGreen else PandaRed,
+        )
     }
 }
 

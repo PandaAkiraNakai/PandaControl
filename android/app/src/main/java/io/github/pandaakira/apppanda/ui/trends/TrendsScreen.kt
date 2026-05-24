@@ -72,7 +72,7 @@ fun TrendsScreen(app: PandaApp) {
     }
 
     if (api == null) {
-        EmptyState("Configura el backend en Setup.")
+        EmptyState("Configura el backend en Ajustes.")
         return
     }
 

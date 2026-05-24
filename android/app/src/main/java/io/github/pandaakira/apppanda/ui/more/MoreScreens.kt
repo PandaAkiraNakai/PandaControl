@@ -23,18 +23,16 @@ import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.Subject
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.PowerSettingsNew
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Wifi
-import androidx.compose.material.icons.outlined.Memory
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -82,21 +80,28 @@ private data class ModuleEntry(
 @Composable
 fun ModulesScreen(onNavigate: (String) -> Unit) {
     val modules = listOf(
-        ModuleEntry("power", "Poder", Icons.Outlined.PowerSettingsNew,
-            MaterialTheme.colorScheme.error),
-        ModuleEntry("trends", "Tendencia", Icons.Outlined.BarChart, PandaYellow),
-        ModuleEntry("processes", "Procesos", Icons.Outlined.Memory, PandaYellow),
         ModuleEntry("services", "Servicios", Icons.Outlined.Tune, PandaCyan),
+        ModuleEntry("updates", "Actualizar", Icons.Outlined.SystemUpdate, PandaGreen),
+        ModuleEntry("power", "Energía", Icons.Outlined.PowerSettingsNew,
+            MaterialTheme.colorScheme.error),
         ModuleEntry("files", "Archivos", Icons.Outlined.Folder, PandaGreen),
-        ModuleEntry("logs", "Logs", Icons.Outlined.Subject, PandaMagenta),
-        ModuleEntry("updates", "Updates", Icons.Outlined.SystemUpdate, PandaGreen),
-        ModuleEntry("network", "Red", Icons.Outlined.Wifi, PandaGreen),
+        ModuleEntry("network", "Red LAN", Icons.Outlined.Wifi, PandaGreen),
         ModuleEntry("vps", "VPS", Icons.Outlined.Cloud, PandaYellow),
-        ModuleEntry("settings", "Ajustes", Icons.Outlined.Settings, PandaCyan),
     )
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        ScreenHeader("MODULES", "${modules.size} secciones disponibles")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f)) {
+                ScreenHeader("SISTEMA", "administración de la máquina")
+            }
+            IconButton(onClick = { onNavigate("settings") }) {
+                Icon(
+                    Icons.Outlined.Settings,
+                    contentDescription = "Ajustes",
+                    tint = PandaCyan,
+                )
+            }
+        }
         Spacer(Modifier.height(8.dp))
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
@@ -517,85 +522,6 @@ fun UpdatesScreen(app: PandaApp) {
     }
 }
 
-// ─── Audio ───────────────────────────────────────────────────────────────────
-
-@Composable
-fun AudioScreen(app: PandaApp) {
-    val api by app.repository.api.collectAsState()
-    var data by remember {
-        mutableStateOf<io.github.pandaakira.apppanda.data.models.AudioResponse?>(null)
-    }
-    var error by remember { mutableStateOf<String?>(null) }
-    var refresh by remember { mutableStateOf(0) }
-    val scope = rememberCoroutineScope()
-    val exec = io.github.pandaakira.apppanda.ui.components.rememberActionExecutor { api }
-
-    LaunchedEffect(api, refresh) {
-        val current = api ?: return@LaunchedEffect
-        scope.launch {
-            try {
-                data = withContext(Dispatchers.IO) { current.audio() }
-                error = null
-            } catch (e: Exception) {
-                error = e.message ?: e::class.simpleName
-            }
-        }
-    }
-
-    LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        item {
-            ScreenHeader("AUDIO :: sinks", "tap = cambiar default")
-        }
-        error?.let { item { ErrorCard(it) } }
-        data?.error?.let { item { ErrorCard(it) } }
-        data?.sinks?.let { sinks ->
-            items(sinks.size) { i ->
-                val sink = sinks[i]
-                val isDefault = sink.name == data?.default
-                val accent = if (isDefault) PandaGreen else PandaCyan
-                Column(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surface)
-                        .border(1.dp, accent.copy(alpha = 0.4f),
-                            RoundedCornerShape(12.dp))
-                        .clickable(enabled = !isDefault && !exec.busy) {
-                            exec.run("Audio → ${sink.label.take(20)}") {
-                                it.setAudioSink(sink.name)
-                            }
-                            // refresh tras un breve delay
-                            scope.launch {
-                                kotlinx.coroutines.delay(600)
-                                refresh++
-                            }
-                        }.padding(16.dp),
-                ) {
-                    Text("// ${sink.icon} ${sink.kind.uppercase()}",
-                        style = MaterialTheme.typography.labelSmall, color = accent)
-                    Text(sink.label, style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface)
-                    Text(sink.name,
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontFamily = FontFamily.Monospace),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (isDefault) {
-                        Text("// DEFAULT",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = PandaGreen,
-                            modifier = Modifier.padding(top = 4.dp))
-                    }
-                }
-            }
-        }
-        item {
-            io.github.pandaakira.apppanda.ui.components.ActionResultBanner(exec)
-        }
-    }
-}
-
 // ─── Displays (niri) ─────────────────────────────────────────────────────────
 
 @Composable
@@ -692,8 +618,12 @@ fun MediaScreen(app: PandaApp) {
     val api by app.repository.api.collectAsState()
     var players by remember { mutableStateOf<List<String>>(emptyList()) }
     var statuses by remember { mutableStateOf<Map<String, MediaStatus>>(emptyMap()) }
+    var audio by remember {
+        mutableStateOf<io.github.pandaakira.apppanda.data.models.AudioResponse?>(null)
+    }
     var error by remember { mutableStateOf<String?>(null) }
     var refresh by remember { mutableStateOf(0) }
+    var audioRefresh by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
     val exec = io.github.pandaakira.apppanda.ui.components.rememberActionExecutor { api }
 
@@ -715,14 +645,23 @@ fun MediaScreen(app: PandaApp) {
         }
     }
 
+    // Salida de audio: se carga aparte para que un fallo de pactl no tumbe el
+    // reproductor (y viceversa). Comparte el mismo ActionExecutor.
+    LaunchedEffect(api, audioRefresh) {
+        val current = api ?: return@LaunchedEffect
+        scope.launch {
+            audio = withContext(Dispatchers.IO) { runCatching { current.audio() }.getOrNull() }
+        }
+    }
+
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
-        item { ScreenHeader("MEDIA :: MPRIS", "${players.size} players activos") }
+        item { ScreenHeader("REPRODUCTOR", "${players.size} players · salida de audio") }
         when {
-            api == null -> item { EmptyState("Configura el backend en Setup.") }
+            api == null -> item { EmptyState("Configura el backend en Ajustes.") }
             error != null -> item { ErrorCard(error!!) }
             players.isEmpty() -> item { EmptyState("Sin reproductores activos.") }
             else -> items(players.size) { i ->
@@ -784,6 +723,65 @@ fun MediaScreen(app: PandaApp) {
                 }
             }
         }
+
+        // ─── Salida de audio (fusionado con el reproductor) ───
+        if (api != null) {
+            item {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "// SALIDA DE AUDIO",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    "tap a un sink = ponerlo por defecto",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            audio?.error?.let { item { ErrorCard(it) } }
+            val sinks = audio?.sinks
+            if (sinks.isNullOrEmpty()) {
+                item { EmptyState("Sin sinks de audio.") }
+            } else {
+                items(sinks.size) { i ->
+                    val sink = sinks[i]
+                    val isDefault = sink.name == audio?.default
+                    val accent = if (isDefault) PandaGreen else PandaCyan
+                    Column(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surface)
+                            .border(1.dp, accent.copy(alpha = 0.4f),
+                                RoundedCornerShape(12.dp))
+                            .clickable(enabled = !isDefault && !exec.busy) {
+                                exec.run("Audio → ${sink.label.take(20)}") {
+                                    it.setAudioSink(sink.name)
+                                }
+                                scope.launch {
+                                    kotlinx.coroutines.delay(600)
+                                    audioRefresh++
+                                }
+                            }.padding(16.dp),
+                    ) {
+                        Text("// ${sink.icon} ${sink.kind.uppercase()}",
+                            style = MaterialTheme.typography.labelSmall, color = accent)
+                        Text(sink.label, style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface)
+                        Text(sink.name,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontFamily = FontFamily.Monospace),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (isDefault) {
+                            Text("// DEFAULT",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = PandaGreen,
+                                modifier = Modifier.padding(top = 4.dp))
+                        }
+                    }
+                }
+            }
+        }
+
         item { io.github.pandaakira.apppanda.ui.components.ActionResultBanner(exec) }
     }
 }
@@ -887,7 +885,7 @@ fun VpsScreen(app: PandaApp) {
     ) {
         item { ScreenHeader("VPS", "${hosts.size} hosts configurados") }
         when {
-            api == null -> item { EmptyState("Configura el backend en Setup.") }
+            api == null -> item { EmptyState("Configura el backend en Ajustes.") }
             error != null -> item { ErrorCard(error!!) }
             hosts.isEmpty() -> item { EmptyState("Sin VPS configurados en el backend.") }
             else -> {
@@ -960,7 +958,7 @@ fun GamesScreen(app: PandaApp) {
         )
         Spacer(Modifier.height(8.dp))
         when {
-            api == null -> EmptyState("Configura el backend en Setup.")
+            api == null -> EmptyState("Configura el backend en Ajustes.")
             error != null -> ErrorCard(error!!)
             games == null -> EmptyState("Cargando…")
             games!!.isEmpty() -> EmptyState("Sin juegos detectados en la biblioteca Steam.")
@@ -1043,7 +1041,7 @@ fun AppsScreen(app: PandaApp) {
         )
         Spacer(Modifier.height(8.dp))
         when {
-            api == null -> EmptyState("Configura el backend en Setup.")
+            api == null -> EmptyState("Configura el backend en Ajustes.")
             error != null -> ErrorCard(error!!)
             apps == null -> EmptyState("Cargando…")
             apps!!.isEmpty() -> EmptyState(

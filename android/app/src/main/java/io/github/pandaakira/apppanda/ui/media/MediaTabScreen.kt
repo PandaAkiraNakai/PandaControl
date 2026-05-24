@@ -27,7 +27,6 @@ import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.Mouse
-import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.SportsEsports
 import androidx.compose.material.icons.outlined.Tv
 import androidx.compose.material3.Icon
@@ -76,6 +75,11 @@ private data class NiriCmd(
     val color: Color,
 )
 
+private data class NiriGroup(
+    val label: String,
+    val cmds: List<NiriCmd>,
+)
+
 @Composable
 fun MediaTabScreen(app: PandaApp, onNavigate: (String) -> Unit) {
     val api by app.repository.api.collectAsState()
@@ -96,12 +100,10 @@ fun MediaTabScreen(app: PandaApp, onNavigate: (String) -> Unit) {
     }
 
     val tiles = listOf(
-        MediaEntry("media", "Reproductor", "MPRIS · play/pause · seek · fullscreen",
+        MediaEntry("media", "Reproductor", "MPRIS · seek · fullscreen · salida de audio",
             Icons.Outlined.Bolt, PandaMagenta),
-        MediaEntry("input", "Control", "mouse · teclado · touchpad",
+        MediaEntry("input", "Mouse/Teclado", "touchpad · clics · atajos",
             Icons.Outlined.Mouse, PandaGreen),
-        MediaEntry("audio", "Audio", "sinks pactl · cambiar default",
-            Icons.Outlined.MusicNote, PandaOrange),
         MediaEntry("displays", "Pantallas", "niri outputs · DPMS",
             Icons.Outlined.Tv, PandaCyan),
         MediaEntry("apps", "Apps", "lanzar GUI vía systemd-run",
@@ -110,16 +112,22 @@ fun MediaTabScreen(app: PandaApp, onNavigate: (String) -> Unit) {
             Icons.Outlined.SportsEsports, PandaOrange),
     )
 
-    val cmds = listOf(
-        NiriCmd("fullscreen-window",   "Fullscreen",  Icons.Outlined.Fullscreen,         PandaMagenta),
-        NiriCmd("close-window",        "Cerrar",      Icons.Outlined.Close,              MaterialTheme.colorScheme.error),
-        NiriCmd("maximize-column",     "Maximizar",   Icons.Outlined.AspectRatio,        PandaOrange),
-        NiriCmd("focus-column-left",   "Col. ←",      Icons.Outlined.ChevronLeft,        PandaCyan),
-        NiriCmd("focus-column-right",  "Col. →",      Icons.Outlined.ChevronRight,       PandaCyan),
-        NiriCmd("focus-workspace-up",   "WS ↑",       Icons.Outlined.KeyboardArrowUp,    PandaYellow),
-        NiriCmd("focus-workspace-down", "WS ↓",       Icons.Outlined.KeyboardArrowDown,  PandaYellow),
-        NiriCmd("toggle-overview",     "Overview",    Icons.Outlined.GridView,           PandaCyan),
-        NiriCmd("media-workspace",     "Media WS",    Icons.Outlined.Tv,                 PandaGreen),
+    val groups = listOf(
+        NiriGroup("ventana", listOf(
+            NiriCmd("fullscreen-window", "Fullscreen", Icons.Outlined.Fullscreen,   PandaMagenta),
+            NiriCmd("maximize-column",   "Maximizar",  Icons.Outlined.AspectRatio,  PandaOrange),
+            NiriCmd("close-window",      "Cerrar",     Icons.Outlined.Close,        MaterialTheme.colorScheme.error),
+        )),
+        NiriGroup("foco · columnas y workspaces", listOf(
+            NiriCmd("focus-column-left",    "Col. ←", Icons.Outlined.ChevronLeft,       PandaCyan),
+            NiriCmd("focus-column-right",   "Col. →", Icons.Outlined.ChevronRight,      PandaCyan),
+            NiriCmd("focus-workspace-up",   "WS ↑",   Icons.Outlined.KeyboardArrowUp,   PandaYellow),
+            NiriCmd("focus-workspace-down", "WS ↓",   Icons.Outlined.KeyboardArrowDown, PandaYellow),
+        )),
+        NiriGroup("vistas", listOf(
+            NiriCmd("toggle-overview", "Overview", Icons.Outlined.GridView, PandaCyan),
+            NiriCmd("media-workspace", "Media WS", Icons.Outlined.Tv,       PandaGreen),
+        )),
     )
 
     Column(
@@ -128,7 +136,7 @@ fun MediaTabScreen(app: PandaApp, onNavigate: (String) -> Unit) {
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
     ) {
-        ScreenHeader("MEDIA :: SESSION", "control de la sesión gráfica")
+        ScreenHeader("CONTROL :: SESIÓN", "reproductor · input · audio · pantallas · apps · juegos")
         Spacer(Modifier.height(8.dp))
 
         // Grid 2 columnas de tiles (manual, para poder scrollear con la
@@ -194,23 +202,33 @@ fun MediaTabScreen(app: PandaApp, onNavigate: (String) -> Unit) {
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
-            // Grid 3 columnas, manual.
-            cmds.chunked(3).forEach { row ->
-                Row(
-                    Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    row.forEach { c ->
-                        CmdButton(
-                            cmd = c,
-                            enabled = !exec.busy && api != null,
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            exec.run(c.label) { it.niriCmd(c.id, targetOutput) }
+            // Comandos agrupados por intención: cada grupo con su etiqueta y su
+            // propia rejilla de 3 columnas. Así "Cerrar" (destructivo) queda en
+            // "ventana" y no pegado a la navegación.
+            groups.forEach { group ->
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    group.label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = PandaCyan,
+                )
+                Spacer(Modifier.height(6.dp))
+                group.cmds.chunked(3).forEach { row ->
+                    Row(
+                        Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        row.forEach { c ->
+                            CmdButton(
+                                cmd = c,
+                                enabled = !exec.busy && api != null,
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                exec.run(c.label) { it.niriCmd(c.id, targetOutput) }
+                            }
                         }
+                        repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                     }
-                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }

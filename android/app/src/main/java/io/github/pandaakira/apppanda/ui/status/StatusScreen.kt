@@ -34,6 +34,9 @@ import io.github.pandaakira.apppanda.ui.components.ErrorCard
 import io.github.pandaakira.apppanda.ui.components.KeyValue
 import io.github.pandaakira.apppanda.ui.components.PandaCard
 import io.github.pandaakira.apppanda.ui.components.StatBar
+import io.github.pandaakira.apppanda.ui.more.LogsScreen
+import io.github.pandaakira.apppanda.ui.more.ProcessesScreen
+import io.github.pandaakira.apppanda.ui.trends.TrendsScreen
 import io.github.pandaakira.apppanda.ui.theme.PandaCyan
 import io.github.pandaakira.apppanda.ui.theme.PandaGreen
 import io.github.pandaakira.apppanda.ui.theme.PandaMagenta
@@ -42,15 +45,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val tabs = listOf("Sistema", "Disco", "Red", "Temps", "GPU")
+private val tabs = listOf("Sistema", "Disco", "Red", "Temps", "GPU", "Procesos", "Logs", "Histórico")
 
 @Composable
-fun StatusScreen(app: PandaApp) {
+fun MonitorScreen(app: PandaApp) {
     val api by app.repository.api.collectAsState()
     var tab by remember { mutableStateOf(0) }
 
     if (api == null) {
-        EmptyState("Configura el backend en Setup.")
+        EmptyState("Configura el backend en Ajustes.")
         return
     }
 
@@ -75,6 +78,9 @@ fun StatusScreen(app: PandaApp) {
             2 -> NetTab(app)
             3 -> TempsTab(app)
             4 -> GpuTab(app)
+            5 -> ProcessesScreen(app)
+            6 -> LogsScreen(app)
+            7 -> TrendsScreen(app)
         }
     }
 }

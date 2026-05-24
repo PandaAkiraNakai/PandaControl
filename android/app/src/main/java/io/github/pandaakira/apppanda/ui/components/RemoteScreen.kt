@@ -59,7 +59,7 @@ fun <T : Any> RemoteScreen(
     ) {
         item { ScreenHeader(title, subtitle) }
         when {
-            api == null -> item { EmptyState("Configura el backend en Setup.") }
+            api == null -> item { EmptyState("Configura el backend en Ajustes.") }
             error != null -> item { ErrorCard(error!!) }
             data != null -> content(data!!)
             else -> item { EmptyState("Cargando…") }

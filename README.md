@@ -216,7 +216,8 @@ O sube el APK a tu nube/Telegram, descárgalo en el celular e instálalo a mano
 
 ### 9. Conecta la app al backend
 
-1. Abre **Panda Control** y ve a la pestaña **Setup** (engranaje).
+1. Abre **Panda Control**, ve a la pestaña **Sistema** y toca el engranaje
+   (**Ajustes**) arriba a la derecha.
 2. Rellena:
    - **Host**: la IP Tailscale de tu PC (p. ej. `100.64.0.5`).
    - **Puerto**: `8890`.
