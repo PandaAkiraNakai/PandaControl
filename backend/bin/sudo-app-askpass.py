@@ -93,8 +93,12 @@ def main() -> None:
     prompt = sys.argv[1] if len(sys.argv) > 1 else ""
     command = os.environ.get("SUDO_COMMAND", "")
     sudo_user = os.environ.get("SUDO_USER", "")
-    # Si sudo no expone SUDO_COMMAND al askpass, intentar parsear desde el prompt
-    # o marcar con el usuario para dar contexto mínimo.
+    # sudo NO exporta SUDO_COMMAND al askpass (solo al comando final), así que
+    # casi siempre llega vacío. Lo recuperamos leyendo la línea de comandos del
+    # proceso padre — que es el propio sudo — y le quitamos las opciones para
+    # quedarnos con el comando real que se va a ejecutar.
+    if not command:
+        command = command_from_parent()
     if not command and sudo_user:
         command = f"(usuario: {sudo_user})"
     base = backend_base(cfg)
@@ -133,6 +137,41 @@ def main() -> None:
     else:
         sys.stderr.write(f"sudo-app-askpass: estado inesperado {status!r}\n")
         fallback(fallback_bin)
+
+
+# Opciones de sudo que llevan un argumento aparte (hay que saltarlo al buscar
+# el comando). El resto de los flags son booleanos (-k, -A, -S, -b, -n, …).
+_SUDO_OPTS_WITH_ARG = {
+    "-u", "-g", "-p", "-C", "-h", "-R", "-T", "-U", "-D", "-r", "-t", "-c",
+    "--user", "--group", "--prompt", "--close-from", "--host", "--chroot",
+    "--command-timeout", "--other-user", "--chdir", "--role", "--type",
+}
+
+
+def command_from_parent() -> str:
+    """Lee /proc/$PPID/cmdline (el proceso padre es el propio sudo) y devuelve
+    el comando que sudo va a ejecutar, sin el binario `sudo` ni sus opciones.
+    Cadena vacía si no se puede determinar."""
+    try:
+        with open(f"/proc/{os.getppid()}/cmdline", "rb") as f:
+            parts = [p for p in f.read().split(b"\x00") if p]
+    except OSError:
+        return ""
+    argv = [p.decode("utf-8", "replace") for p in parts]
+    if not argv:
+        return ""
+    # argv[0] = ruta a sudo. Saltar opciones hasta dar con el comando.
+    i = 1
+    while i < len(argv):
+        tok = argv[i]
+        if tok == "--":
+            i += 1
+            break
+        if tok.startswith("-"):
+            i += 2 if tok in _SUDO_OPTS_WITH_ARG else 1
+            continue
+        break
+    return " ".join(argv[i:]).strip()
 
 
 def post_request(base: str, prompt: str, command: str, token: str) -> str:

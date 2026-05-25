@@ -286,10 +286,14 @@ private fun promptSudoBiometric(
         },
     )
     val info = BiometricPrompt.PromptInfo.Builder()
-        .setTitle("Aprobar sudo")
+        .setTitle("Aprobar elevación sudo")
         .setSubtitle(
-            if (command.isNotBlank()) command.take(80)
+            if (command.isNotBlank()) "Comando: ${command.take(70)}"
             else "Elevación de privilegios en la torre",
+        )
+        .setDescription(
+            "Al confirmar tu identidad APRUEBAS esta solicitud de sudo en la " +
+                "torre. Cancela para no aprobar.",
         )
         .setAllowedAuthenticators(allowed)
         .build()
