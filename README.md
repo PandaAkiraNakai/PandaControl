@@ -420,3 +420,6 @@ POST /api/v1/sudo/{rid}/decision   {approve: bool}    (huella en la app)
 
 MIT. Ver [LICENSE](LICENSE).
 ```
+<!-- profile-excerpt -->
+**Panel Android + backend Python** para controlar tu PC Linux desde el celu vía **Tailscale**. Kotlin/Compose con tema cyberpunk, Ktor 3 + SSE para push en vivo, ForegroundService para notifs en background. Daemon stdlib que expone REST/SSE bajo polkit narrow-scope: poder, kill, services, audio sinks (pactl), pantallas niri + DPMS, MPRIS con seek±15/fullscreen, lanzar apps/juegos Steam, journal, updates `pacman`. Auth dual: identidad Tailscale (`tailscale whois`) o Bearer token. Cero servicios externos, cero telemetría. `// linux-control · phone-rig · tailnet-native`
+<!-- /profile-excerpt -->
