@@ -118,11 +118,14 @@ echo "==> Creating $THEMES_DIR"
 install -d -m 0755 -o "$TARGET_USER" -g "$TARGET_GROUP" \
     "$TARGET_HOME/.config" "$TARGET_HOME/.config/apppanda-backend" "$THEMES_DIR"
 if [ -z "$(ls -A "$THEMES_DIR" 2>/dev/null)" ] && [ -d "$SRC_DIR/config/temas" ]; then
-    echo "    Seeding temas de ejemplo"
-    for t in "$SRC_DIR"/config/temas/*.json; do
-        [ -e "$t" ] || continue
-        install -m 0644 -o "$TARGET_USER" -g "$TARGET_GROUP" "$t" "$THEMES_DIR/"
-    done
+    echo "    Seeding temas de ejemplo (preservando subcarpetas/categorías)"
+    # Copia recursiva preservando la estructura de subcarpetas (cada subcarpeta
+    # es una categoría en la app). install -D crea los directorios intermedios.
+    while IFS= read -r -d '' rel; do
+        rel="${rel#./}"
+        install -D -m 0644 -o "$TARGET_USER" -g "$TARGET_GROUP" \
+            "$SRC_DIR/config/temas/$rel" "$THEMES_DIR/$rel"
+    done < <(cd "$SRC_DIR/config/temas" && find . -name '*.json' -print0)
 else
     echo "    ($THEMES_DIR ya tiene temas — no se siembran ejemplos)"
 fi

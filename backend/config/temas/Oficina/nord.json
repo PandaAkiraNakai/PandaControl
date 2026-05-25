@@ -5,6 +5,7 @@
   "iconStyle": "rounded",
   "corner": 12,
   "border": 1,
+  "backgroundImage": "nord-wallpaper.jpg",
   "colors": {
     "background": "#2E3440",
     "surface": "#3B4252",

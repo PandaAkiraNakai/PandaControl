@@ -5,6 +5,7 @@
   "iconStyle": "sharp",
   "corner": 2,
   "border": 1,
+  "backgroundEffect": "matrixRain",
   "colors": {
     "background": "#02110A",
     "surface": "#04200F",

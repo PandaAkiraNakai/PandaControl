@@ -21,10 +21,10 @@ android/.cxx/
 
 # Imágenes de fondo de temas: son wallpapers locales del usuario (a menudo con
 # copyright). Solo los .json de ejemplo van al repo, nunca las imágenes.
-backend/config/temas/*.jpg
-backend/config/temas/*.jpeg
-backend/config/temas/*.png
-backend/config/temas/*.webp
+backend/config/temas/**/*.jpg
+backend/config/temas/**/*.jpeg
+backend/config/temas/**/*.png
+backend/config/temas/**/*.webp
 
 # Python
 __pycache__/

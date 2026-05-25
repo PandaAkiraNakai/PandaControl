@@ -49,6 +49,8 @@ data class PandaTheme(
     val iconStyle: IconStyle,
     val shapes: PandaShapes,
     val backgroundImage: String = "",
+    /** Efecto de fondo animado que dibuja la app (p. ej. "matrixRain"). "" = ninguno. */
+    val backgroundEffect: String = "",
 )
 
 /** Paleta cyberpunk incluida — el tema por defecto y el fallback. */
@@ -91,6 +93,20 @@ val LocalPandaColors = staticCompositionLocalOf { BuiltInPalette }
 
 /** Formas/bordes activos, para que tarjetas y contenedores cambien de forma. */
 val LocalPandaShapes = staticCompositionLocalOf { BuiltInShapes }
+
+/**
+ * "Chrome de terminal" del tema: el prefijo `// ` que las tarjetas y titulares
+ * anteponen, parte de la identidad cyberpunk/terminal. Se activa solo en los
+ * temas de fuente mono/mixta (Cyberpunk, Matrix, Synthwave) y se apaga en los
+ * sans/serif (Nord, Soft), que quedan con titulares limpios acordes a su
+ * estética. Los datos monoespaciados (tablas, IPs, logs) no son chrome y no se
+ * tocan.
+ */
+val LocalPandaChrome = staticCompositionLocalOf { true }
+
+/** Deriva si un tema lleva chrome de terminal a partir de su fuente. */
+fun PandaFont.usesTerminalChrome(): Boolean =
+    this == PandaFont.Default || this == PandaFont.Mono
 
 private fun PandaPalette.toColorScheme(): ColorScheme = darkColorScheme(
     primary = yellow,
@@ -151,6 +167,7 @@ fun ThemeDef.toPandaTheme(): PandaTheme = PandaTheme(
     iconStyle = iconStyleFromName(iconStyle),
     shapes = pandaShapes(corner, border),
     backgroundImage = backgroundImage,
+    backgroundEffect = backgroundEffect,
 )
 
 @Composable
@@ -162,6 +179,7 @@ fun PandaControlTheme(
         LocalPandaColors provides theme.palette,
         LocalPandaShapes provides theme.shapes,
         LocalIconStyle provides theme.iconStyle,
+        LocalPandaChrome provides theme.font.usesTerminalChrome(),
     ) {
         MaterialTheme(
             colorScheme = theme.palette.toColorScheme(),

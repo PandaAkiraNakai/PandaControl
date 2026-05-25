@@ -25,6 +25,7 @@ import io.github.pandaakira.apppanda.PandaApp
 import io.github.pandaakira.apppanda.ui.components.ActionResultBanner
 import io.github.pandaakira.apppanda.ui.components.ConfirmDialog
 import io.github.pandaakira.apppanda.ui.components.ScreenHeader
+import io.github.pandaakira.apppanda.ui.components.pandaDeco
 import io.github.pandaakira.apppanda.ui.components.rememberActionExecutor
 
 private data class PowerOption(
@@ -76,7 +77,7 @@ fun PowerScreen(app: PandaApp) {
 
     pending?.let { opt ->
         ConfirmDialog(
-            title = "// ${opt.label.uppercase()}",
+            title = pandaDeco("${opt.label.uppercase()}"),
             message = opt.confirmText,
             confirmLabel = opt.label,
             onConfirm = {

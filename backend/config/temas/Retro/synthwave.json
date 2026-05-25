@@ -1,0 +1,22 @@
+{
+  "name": "Synthwave",
+  "dark": true,
+  "font": "default",
+  "iconStyle": "rounded",
+  "corner": 20,
+  "border": 2,
+  "backgroundImage": "synthwave-overdrive.jpg",
+  "colors": {
+    "background": "#1B0B2E",
+    "surface": "#28123F",
+    "surfaceHigh": "#3A1D56",
+    "onSurface": "#FDE7FF",
+    "onSurfaceMuted": "#B39AD4",
+    "yellow": "#FF6AD5",
+    "magenta": "#C56BFF",
+    "cyan": "#4DE0E8",
+    "green": "#56F0C8",
+    "red": "#FF5E8A",
+    "orange": "#FF9E64"
+  }
+}

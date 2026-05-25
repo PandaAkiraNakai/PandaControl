@@ -50,6 +50,7 @@ import io.github.pandaakira.apppanda.data.models.MediaStatus
 import io.github.pandaakira.apppanda.ui.components.EmptyState
 import io.github.pandaakira.apppanda.ui.components.ErrorCard
 import io.github.pandaakira.apppanda.ui.components.KeyValue
+import io.github.pandaakira.apppanda.ui.components.pandaDeco
 import io.github.pandaakira.apppanda.ui.components.PandaCard
 import io.github.pandaakira.apppanda.ui.components.RemoteScreen
 import io.github.pandaakira.apppanda.ui.components.ScreenHeader
@@ -222,7 +223,7 @@ fun ProcessesScreen(app: PandaApp) {
 
     pending?.let { p ->
         io.github.pandaakira.apppanda.ui.components.ConfirmDialog(
-            title = "// KILL ${p.pid}",
+            title = pandaDeco("KILL ${p.pid}"),
             message = "Enviar SIGTERM al proceso `${p.comm}` (PID ${p.pid}, " +
                       "user ${p.user})?",
             confirmLabel = "kill",
@@ -354,7 +355,7 @@ fun ServicesListScreen(app: PandaApp) {
 
     pending?.let { (unit, act) ->
         io.github.pandaakira.apppanda.ui.components.ConfirmDialog(
-            title = "// ${act.uppercase()} $unit",
+            title = pandaDeco("${act.uppercase()} $unit"),
             message = "¿Ejecutar `systemctl $act $unit`?",
             confirmLabel = act,
             onConfirm = {
@@ -496,7 +497,7 @@ fun UpdatesScreen(app: PandaApp) {
 
     if (pendingApply) {
         io.github.pandaakira.apppanda.ui.components.ConfirmDialog(
-            title = "// APPLY UPDATES",
+            title = pandaDeco("APPLY UPDATES"),
             message = "Esto arranca pacman-update.service (oneshot) en la torre. " +
                       "El job corre en background; vuelve a abrir esta pantalla " +
                       "después para ver el resultado.",
@@ -564,11 +565,11 @@ fun DisplaysScreen(app: PandaApp) {
                             }
                         }.padding(16.dp),
                 ) {
-                    Text("// ${o.name}", style = MaterialTheme.typography.labelSmall,
+                    Text(pandaDeco(o.name), style = MaterialTheme.typography.labelSmall,
                         color = accent)
                     Text(o.label, style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface)
-                    Text(if (o.on) "// ENCENDIDA" else "// APAGADA",
+                    Text(if (o.on) pandaDeco("ENCENDIDA") else pandaDeco("APAGADA"),
                         style = MaterialTheme.typography.labelSmall,
                         color = accent,
                         modifier = Modifier.padding(top = 4.dp))
@@ -720,7 +721,7 @@ fun MediaScreen(app: PandaApp) {
             item {
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "// SALIDA DE AUDIO",
+                    pandaDeco("SALIDA DE AUDIO"),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -754,7 +755,7 @@ fun MediaScreen(app: PandaApp) {
                                 }
                             }.padding(16.dp),
                     ) {
-                        Text("// ${sink.icon} ${sink.kind.uppercase()}",
+                        Text(pandaDeco("${sink.icon} ${sink.kind.uppercase()}"),
                             style = MaterialTheme.typography.labelSmall, color = accent)
                         Text(sink.label, style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurface)
@@ -763,7 +764,7 @@ fun MediaScreen(app: PandaApp) {
                                 fontFamily = FontFamily.Monospace),
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (isDefault) {
-                            Text("// DEFAULT",
+                            Text(pandaDeco("DEFAULT"),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = LocalPandaColors.current.green,
                                 modifier = Modifier.padding(top = 4.dp))
@@ -988,7 +989,7 @@ private fun GameTile(
         verticalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
-            "// ${g.appid}",
+            pandaDeco("${g.appid}"),
             style = MaterialTheme.typography.labelSmall,
             color = LocalPandaColors.current.magenta,
         )

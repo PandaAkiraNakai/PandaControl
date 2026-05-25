@@ -957,21 +957,33 @@ class _Handler(BaseHTTPRequestHandler):
         base = self._themes_dir()
         themes = []
         if base.is_dir():
-            for entry in sorted(base.glob("*.json"), key=lambda e: e.name.lower()):
-                if entry.name.startswith("."):
-                    continue
-                try:
-                    with entry.open("rb") as f:
-                        raw = json.load(f)
-                except (OSError, ValueError):
-                    continue
-                theme = self._parse_theme(entry.stem, raw, base)
-                if theme is not None:
-                    themes.append(theme)
+            # Temas sueltos en la raíz (sin categoría) + temas dentro de
+            # subcarpetas (categoría = nombre de la subcarpeta), para que la app
+            # los muestre agrupados. Solo se baja un nivel de profundidad.
+            def load_dir(folder: Path, category: str) -> None:
+                for entry in sorted(folder.glob("*.json"), key=lambda e: e.name.lower()):
+                    if entry.name.startswith("."):
+                        continue
+                    try:
+                        with entry.open("rb") as f:
+                            raw = json.load(f)
+                    except (OSError, ValueError):
+                        continue
+                    theme_id = f"{category}/{entry.stem}" if category else entry.stem
+                    theme = self._parse_theme(theme_id, raw, folder, category)
+                    if theme is not None:
+                        themes.append(theme)
+
+            load_dir(base, "")
+            for sub in sorted(base.iterdir(), key=lambda e: e.name.lower()):
+                if sub.is_dir() and not sub.name.startswith("."):
+                    load_dir(sub, sub.name)
         return {"dir": str(base), "themes": themes}
 
     _FONTS = ("default", "sans", "serif", "mono")
     _ICON_STYLES = ("outlined", "filled", "rounded", "sharp")
+    # Efectos de fondo animados que la app sabe dibujar (sin imagen). "" = ninguno.
+    _BG_EFFECTS = ("", "matrixRain", "equalizer")
 
     @staticmethod
     def _clamp_int(v, default: int, lo: int, hi: int) -> int:
@@ -981,7 +993,7 @@ class _Handler(BaseHTTPRequestHandler):
             return default
         return max(lo, min(hi, n))
 
-    def _parse_theme(self, theme_id: str, raw, base: Path) -> dict | None:
+    def _parse_theme(self, theme_id: str, raw, folder: Path, category: str = "") -> dict | None:
         if not isinstance(raw, dict):
             return None
         colors_in = raw.get("colors")
@@ -1004,6 +1016,11 @@ class _Handler(BaseHTTPRequestHandler):
         icon_style = raw.get("iconStyle", "outlined")
         if icon_style not in self._ICON_STYLES:
             icon_style = "outlined"
+        # Efecto de fondo animado (lo dibuja la app, no es una imagen). Valor
+        # desconocido → sin efecto, no invalida el tema.
+        bg_effect = raw.get("backgroundEffect", "")
+        if bg_effect not in self._BG_EFFECTS:
+            bg_effect = ""
         # Imágenes de fondo opcionales: nombres de archivos en la carpeta de
         # temas. Acepta "backgroundImage" (uno) y/o "backgroundImages" (lista,
         # para elegir entre varios). Solo se reportan los que existan y tengan
@@ -1018,11 +1035,12 @@ class _Handler(BaseHTTPRequestHandler):
         images = []
         for c in candidates:
             safe = self._safe_filename(c.strip()) if c.strip() else None
-            if safe and (base / safe).is_file() and safe not in images:
+            if safe and (folder / safe).is_file() and safe not in images:
                 images.append(safe)
         return {
             "id": theme_id,
             "name": name.strip(),
+            "category": category,
             "dark": bool(raw.get("dark", True)),
             "font": font,
             "iconStyle": icon_style,
@@ -1030,6 +1048,7 @@ class _Handler(BaseHTTPRequestHandler):
             "border": self._clamp_int(raw.get("border", 1), 1, 0, 8),
             "backgroundImage": images[0] if images else "",
             "backgroundImages": images,
+            "backgroundEffect": bg_effect,
             "colors": colors,
         }
 
@@ -1044,8 +1063,10 @@ class _Handler(BaseHTTPRequestHandler):
             self._err(400, "name inválido")
             self._audit("/api/v1/themes/image", 400)
             return
-        path = base / name
-        if not path.is_file():
+        # El tema puede vivir en una subcarpeta (categoría); el nombre llega
+        # sin separadores, así que lo buscamos un nivel hacia abajo también.
+        path = next((p for p in base.rglob(name) if p.is_file()), None)
+        if path is None:
             self._err(404, "no existe")
             self._audit("/api/v1/themes/image", 404)
             return

@@ -1,0 +1,22 @@
+{
+  "name": "Cyberpunk 2077",
+  "dark": true,
+  "font": "default",
+  "iconStyle": "sharp",
+  "corner": 4,
+  "border": 1,
+  "backgroundImages": ["cyberpunk.jpg", "cyberpunk2.jpg"],
+  "colors": {
+    "background": "#07070B",
+    "surface": "#101017",
+    "surfaceHigh": "#1A1A24",
+    "onSurface": "#EAFBFF",
+    "onSurfaceMuted": "#7E8794",
+    "yellow": "#FFE600",
+    "magenta": "#FF2A6D",
+    "cyan": "#05D9E8",
+    "green": "#00FF9F",
+    "red": "#FF124F",
+    "orange": "#FF9F1C"
+  }
+}

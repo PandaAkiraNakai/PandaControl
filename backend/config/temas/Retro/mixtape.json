@@ -1,0 +1,23 @@
+{
+  "name": "Mixtape",
+  "dark": true,
+  "font": "serif",
+  "iconStyle": "sharp",
+  "corner": 2,
+  "border": 1,
+  "backgroundImage": "mixtape-cassette.jpg",
+  "backgroundEffect": "equalizer",
+  "colors": {
+    "background": "#211C24",
+    "surface": "#2C2630",
+    "surfaceHigh": "#392F3E",
+    "onSurface": "#EDE4D6",
+    "onSurfaceMuted": "#9C9088",
+    "yellow": "#D9A86C",
+    "magenta": "#C97B8E",
+    "cyan": "#6FB3AE",
+    "green": "#8FA678",
+    "red": "#C85A54",
+    "orange": "#D78B5A"
+  }
+}

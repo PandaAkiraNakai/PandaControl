@@ -39,6 +39,7 @@ import io.github.pandaakira.apppanda.data.models.MetricRow
 import io.github.pandaakira.apppanda.data.models.MetricsResponse
 import io.github.pandaakira.apppanda.ui.components.EmptyState
 import io.github.pandaakira.apppanda.ui.components.PandaCard
+import io.github.pandaakira.apppanda.ui.components.pandaDeco
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -78,7 +79,7 @@ fun TrendsScreen(app: PandaApp) {
     ) {
         item {
             Text(
-                "// TREND :: ${data?.rows?.size ?: 0} rows",
+                pandaDeco("TREND :: ${data?.rows?.size ?: 0} rows"),
                 style = MaterialTheme.typography.headlineMedium,
                 color = MaterialTheme.colorScheme.primary,
             )

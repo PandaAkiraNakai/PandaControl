@@ -288,6 +288,7 @@ data class ThemeColors(
 data class ThemeDef(
     val id: String,
     val name: String,
+    val category: String = "",
     val dark: Boolean = true,
     val font: String = "default",
     val iconStyle: String = "outlined",
@@ -295,6 +296,7 @@ data class ThemeDef(
     val border: Int = 1,
     val backgroundImage: String = "",
     val backgroundImages: List<String> = emptyList(),
+    val backgroundEffect: String = "",
     val colors: ThemeColors,
 )
 

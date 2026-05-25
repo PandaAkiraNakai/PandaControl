@@ -107,6 +107,25 @@ fun ThemesScreen(app: PandaApp) {
         }
     }
 
+    // El tema incluido (Cyberpunk) — siempre disponible, incluso sin backend.
+    // Se reusa en la sección "Cyberpunk" y en los estados sin datos.
+    val builtIn: @Composable () -> Unit = {
+        ThemeCard(
+            app = app,
+            name = "Cyberpunk (incluido)",
+            colors = builtInColors,
+            meta = "default · outlined · r12 · b1",
+            cornerDp = 12,
+            borderDp = 1,
+            wallpapers = emptyList(),
+            activeWallpaper = "",
+            selected = builtInActive,
+            accent = accent,
+            onClick = { scope.launch { app.settings.clearTheme() } },
+            onPickWallpaper = {},
+        )
+    }
+
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -115,61 +134,84 @@ fun ThemesScreen(app: PandaApp) {
         item {
             ScreenHeader(
                 "TEMAS",
-                "se actualiza solo desde la carpeta del PC · tap para aplicar",
+                "carpetas = subcarpetas del PC · tap para aplicar",
             )
         }
 
-        // Tema incluido — siempre disponible, incluso sin backend.
-        item {
-            ThemeCard(
-                app = app,
-                name = "Cyberpunk (incluido)",
-                colors = builtInColors,
-                meta = "default · outlined · r12 · b1",
-                cornerDp = 12,
-                borderDp = 1,
-                wallpapers = emptyList(),
-                activeWallpaper = "",
-                selected = builtInActive,
-                accent = accent,
-                onClick = { scope.launch { app.settings.clearTheme() } },
-                onPickWallpaper = {},
-            )
-        }
-
-        when {
-            api == null -> item {
-                EmptyState("Configura el backend en Ajustes para ver los temas de la carpeta.")
+        val loaded = themes
+        if (loaded.isNullOrEmpty() || api == null || error != null) {
+            // Sin datos utilizables del backend: muestra solo el incluido.
+            item(key = "hdr-Cyberpunk") { CategoryLabel("Cyberpunk") }
+            item(key = "builtin") { builtIn() }
+            when {
+                api == null -> item {
+                    EmptyState("Configura el backend en Ajustes para ver los temas de la carpeta.")
+                }
+                error != null -> item { ErrorCard(error!!) }
+                loaded == null -> item { EmptyState("Cargando temas…") }
+                else -> item {
+                    EmptyState(
+                        "Sin temas en la carpeta del PC. Deja un *.json (o una " +
+                            "subcarpeta con temas) en:\n$dir\ny vuelve a entrar.",
+                    )
+                }
             }
-            error != null -> item { ErrorCard(error!!) }
-            themes == null -> item { EmptyState("Cargando temas…") }
-            themes!!.isEmpty() -> item {
-                EmptyState(
-                    "Sin temas en la carpeta del PC. Deja un *.json en:\n$dir\n" +
-                        "y vuelve a entrar — aparecerá aquí solo.",
-                )
-            }
-            else -> items(themes!!, key = { it.id }) { theme ->
-                val isSel = !builtInActive && theme.name == selectedName
-                ThemeCard(
-                    app = app,
-                    name = theme.name,
-                    colors = theme.colors,
-                    meta = "${theme.font} · ${theme.iconStyle} · r${theme.corner} · b${theme.border}",
-                    cornerDp = theme.corner,
-                    borderDp = theme.border,
-                    wallpapers = theme.backgroundImages,
-                    activeWallpaper = if (isSel) activeBg else "",
-                    selected = isSel,
-                    accent = accent,
-                    // Tap a la tarjeta: aplica con el primer fondo (el default).
-                    onClick = { apply(theme) },
-                    // Tap a una miniatura: aplica con ese fondo específico.
-                    onPickWallpaper = { wp -> apply(theme.copy(backgroundImage = wp)) },
-                )
+        } else {
+            // Agrupa por categoría (subcarpeta). El tema incluido va dentro de
+            // "Cyberpunk", que siempre se muestra aunque no haya temas ahí.
+            val grouped = loaded.groupBy { it.category.ifBlank { OTHER_CATEGORY } }
+            orderCategories(grouped.keys + "Cyberpunk").forEach { cat ->
+                item(key = "hdr-$cat") { CategoryLabel(cat) }
+                if (cat == "Cyberpunk") item(key = "builtin") { builtIn() }
+                items(grouped[cat] ?: emptyList(), key = { it.id }) { theme ->
+                    val isSel = !builtInActive && theme.name == selectedName
+                    ThemeCard(
+                        app = app,
+                        name = theme.name,
+                        colors = theme.colors,
+                        meta = "${theme.font} · ${theme.iconStyle} · r${theme.corner} · b${theme.border}",
+                        cornerDp = theme.corner,
+                        borderDp = theme.border,
+                        wallpapers = theme.backgroundImages,
+                        activeWallpaper = if (isSel) activeBg else "",
+                        selected = isSel,
+                        accent = accent,
+                        // Tap a la tarjeta: aplica con el primer fondo (el default).
+                        onClick = { apply(theme) },
+                        // Tap a una miniatura: aplica con ese fondo específico.
+                        onPickWallpaper = { wp -> apply(theme.copy(backgroundImage = wp)) },
+                    )
+                }
             }
         }
     }
+}
+
+/** Categoría para temas sueltos en la raíz (sin subcarpeta). */
+private const val OTHER_CATEGORY = "Otros"
+
+/** Orden fijo de las categorías conocidas; el resto va alfabético. */
+private val CATEGORY_ORDER = listOf("Cyberpunk", "Retro", "Oficina")
+
+/** Ordena las categorías: primero las conocidas en su orden, luego el resto
+ *  alfabético, y "Otros" (sin carpeta) al final. */
+private fun orderCategories(cats: Collection<String>): List<String> {
+    val set = cats.toSet()
+    val known = CATEGORY_ORDER.filter { it in set }
+    val rest = (set - CATEGORY_ORDER.toSet() - OTHER_CATEGORY).sorted()
+    val tail = if (OTHER_CATEGORY in set) listOf(OTHER_CATEGORY) else emptyList()
+    return known + rest + tail
+}
+
+/** Encabezado de sección para una categoría de temas. */
+@Composable
+private fun CategoryLabel(text: String) {
+    Text(
+        text = text.uppercase(),
+        style = MaterialTheme.typography.labelSmall,
+        color = LocalPandaColors.current.cyan,
+        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
+    )
 }
 
 @Composable
@@ -224,8 +266,9 @@ private fun ThemeCard(
         }
         Spacer(Modifier.height(10.dp))
         SwatchRow(colors)
-        // Selector de fondo: solo si el tema ofrece más de una imagen.
-        if (wallpapers.size > 1) {
+        // Vista previa / selector de fondo: se muestra siempre que el tema
+        // traiga al menos una imagen (con varias, funciona como selector).
+        if (wallpapers.isNotEmpty()) {
             Spacer(Modifier.height(12.dp))
             Text(
                 "FONDO",

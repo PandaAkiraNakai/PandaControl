@@ -38,7 +38,7 @@ fun PandaCard(
             .padding(16.dp),
     ) {
         Text(
-            text = "// $title",
+            text = pandaDeco(title),
             style = MaterialTheme.typography.labelSmall,
             color = accent,
         )
@@ -134,7 +134,7 @@ fun ErrorCard(msg: String) {
 fun ScreenHeader(title: String, subtitle: String? = null) {
     Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
         Text(
-            text = "// $title",
+            text = pandaDeco(title),
             style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.primary,
         )

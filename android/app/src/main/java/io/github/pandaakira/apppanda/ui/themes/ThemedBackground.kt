@@ -53,18 +53,61 @@ fun ThemedBackground(
     }
 
     Box(Modifier.fillMaxSize().background(theme.palette.background)) {
-        image?.let { img ->
-            Image(
-                bitmap = img,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(theme.palette.background.copy(alpha = 0.55f)),
-            )
+        when {
+            // Efecto animado del tema (la lluvia de código del Matrix). Se dibuja
+            // por encima del color de fondo y debajo del contenido, con un velo
+            // tenue para que el texto siga legible.
+            theme.backgroundEffect == "matrixRain" -> {
+                MatrixRain(
+                    head = theme.palette.onSurface,
+                    trail = theme.palette.green,
+                    background = theme.palette.background,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(theme.palette.background.copy(alpha = 0.30f)),
+                )
+            }
+            // Ecualizador animado estilo equipo de música. Si el tema trae
+            // imagen (p. ej. el cassette), va detrás con su velo; las barras de
+            // LEDs se dibujan encima, ancladas abajo.
+            theme.backgroundEffect == "equalizer" -> {
+                image?.let { img ->
+                    Image(
+                        bitmap = img,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                }
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(theme.palette.background.copy(alpha = 0.55f)),
+                )
+                EqualizerBars(
+                    low = theme.palette.green,
+                    mid = theme.palette.yellow,
+                    high = theme.palette.red,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            // Imagen de fondo del tema (archivo del PC), recortada a pantalla.
+            image != null -> {
+                Image(
+                    bitmap = image!!,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(theme.palette.background.copy(alpha = 0.55f)),
+                )
+            }
         }
         content()
     }
