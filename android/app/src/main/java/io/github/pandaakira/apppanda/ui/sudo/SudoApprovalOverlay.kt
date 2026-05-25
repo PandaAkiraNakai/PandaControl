@@ -1,6 +1,8 @@
 package io.github.pandaakira.apppanda.ui.sudo
 import io.github.pandaakira.apppanda.ui.theme.LocalPandaShapes
 import io.github.pandaakira.apppanda.ui.theme.LocalPandaColors
+import io.github.pandaakira.apppanda.ui.theme.PandaTheme
+import io.github.pandaakira.apppanda.ui.themes.ThemedBackground
 
 import android.app.NotificationManager
 import android.content.Context
@@ -52,7 +54,7 @@ import kotlinx.coroutines.withContext
  * comparte estado y backstack normales.
  */
 @Composable
-fun SudoApprovalOverlay(app: PandaApp) {
+fun SudoApprovalOverlay(app: PandaApp, theme: PandaTheme) {
     val pending by app.repository.pendingSudo.collectAsState()
     val req = pending ?: return
 
@@ -115,10 +117,14 @@ fun SudoApprovalOverlay(app: PandaApp) {
             usePlatformDefaultWidth = false,
         ),
     ) {
-        Box(
+        // El Dialog vive en su propia ventana, así que el ThemedBackground que
+        // envuelve al AppNav no llega hasta acá. Lo aplicamos de nuevo para que
+        // el popup muestre el mismo fondo del tema (color sólido, imagen o
+        // efecto animado) y no quede como un panel plano ajeno al tema.
+        ThemedBackground(app = app, theme = theme) {
+          Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background.copy(alpha = 0.95f))
                 .padding(20.dp),
             contentAlignment = Alignment.Center,
         ) {
@@ -204,6 +210,7 @@ fun SudoApprovalOverlay(app: PandaApp) {
                     }
                 }
             }
+          }
         }
     }
 }

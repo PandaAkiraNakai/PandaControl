@@ -21,8 +21,8 @@ android {
         applicationId = "io.github.pandaakira.apppanda"
         minSdk = 26
         targetSdk = 35
-        versionCode = 41
-        versionName = "2.5.1"
+        versionCode = 42
+        versionName = "2.6.0"
     }
 
     signingConfigs {

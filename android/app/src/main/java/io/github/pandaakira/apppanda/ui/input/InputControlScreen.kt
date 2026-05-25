@@ -65,6 +65,13 @@ import kotlinx.coroutines.withContext
 private const val SENSITIVITY = 1.6f
 // Píxeles de desplazamiento vertical de dos dedos por cada "notch" de scroll.
 private const val SCROLL_STEP = 18f
+// Recorrido (px) que debe acumular un gesto de dos dedos para fijar su eje:
+// vertical → scroll, horizontal → navegación atrás/adelante. Una vez fijado,
+// se mantiene hasta soltar (no se mezcla scroll con navegación).
+private const val TWO_FINGER_AXIS_LOCK = 24f
+// Recorrido horizontal (px) de dos dedos para disparar atrás/adelante. Se
+// dispara una sola vez por gesto.
+private const val NAV_SWIPE_STEP = 90f
 
 /** Acumulador de movimiento thread-safe que conserva la fracción sub-pixel:
  *  los movimientos lentos no se pierden por el redondeo a entero. Implementa
@@ -148,7 +155,8 @@ fun InputControlScreen(app: PandaApp) {
                     // Gesto EXCLUSIVO: consume cada evento desde el `down`, así
                     // el verticalScroll del Column padre nunca participa y el
                     // movimiento es libre en cualquier dirección. Un dedo: drag
-                    // = mover, toque corto = clic. Dos dedos: scroll vertical.
+                    // = mover, toque corto = clic. Dos dedos: vertical = scroll,
+                    // horizontal = navegar atrás (→) / adelante (←).
                     .pointerInput(Unit) {
                         val slop = viewConfiguration.touchSlop
                         awaitEachGesture {
@@ -157,7 +165,15 @@ fun InputControlScreen(app: PandaApp) {
                             var travel = 0f
                             var isDrag = false
                             var maxFingers = 1
-                            var scrollAcc = 0f
+                            // Estado del gesto de dos dedos:
+                            //  axis 0 = sin decidir, 1 = vertical (scroll),
+                            //  2 = horizontal (navegación). vAcc/hAcc acumulan
+                            //  recorrido; navFired evita disparar atrás/adelante
+                            //  más de una vez por gesto.
+                            var twoFingerAxis = 0
+                            var vAcc = 0f
+                            var hAcc = 0f
+                            var navFired = false
                             while (true) {
                                 val event = awaitPointerEvent()
                                 val pressed = event.changes.filter { it.pressed }
@@ -176,19 +192,41 @@ fun InputControlScreen(app: PandaApp) {
                                 // Leer los deltas ANTES de consumir: positionChange()
                                 // devuelve cero una vez consumido el evento.
                                 if (fingers >= 2) {
-                                    // Dos dedos → scroll: acumula el movimiento
-                                    // vertical promedio y manda un notch cada
-                                    // SCROLL_STEP px.
+                                    // Dos dedos: acumula el movimiento promedio
+                                    // en ambos ejes y fija el eje dominante en
+                                    // cuanto uno supera el umbral. Vertical →
+                                    // scroll; horizontal → navegar atrás/adelante.
+                                    val dx = pressed.map { it.positionChange().x }
+                                        .average().toFloat()
                                     val dy = pressed.map { it.positionChange().y }
                                         .average().toFloat()
-                                    scrollAcc += dy
-                                    while (scrollAcc <= -SCROLL_STEP) {
-                                        fire { it.mouseScroll("up") }
-                                        scrollAcc += SCROLL_STEP
+                                    vAcc += dy
+                                    hAcc += dx
+                                    if (twoFingerAxis == 0 &&
+                                        (kotlin.math.abs(hAcc) > TWO_FINGER_AXIS_LOCK ||
+                                            kotlin.math.abs(vAcc) > TWO_FINGER_AXIS_LOCK)
+                                    ) {
+                                        twoFingerAxis =
+                                            if (kotlin.math.abs(hAcc) > kotlin.math.abs(vAcc)) 2 else 1
                                     }
-                                    while (scrollAcc >= SCROLL_STEP) {
-                                        fire { it.mouseScroll("down") }
-                                        scrollAcc -= SCROLL_STEP
+                                    if (twoFingerAxis == 1) {
+                                        // Scroll: un notch cada SCROLL_STEP px.
+                                        while (vAcc <= -SCROLL_STEP) {
+                                            fire { it.mouseScroll("up") }
+                                            vAcc += SCROLL_STEP
+                                        }
+                                        while (vAcc >= SCROLL_STEP) {
+                                            fire { it.mouseScroll("down") }
+                                            vAcc -= SCROLL_STEP
+                                        }
+                                    } else if (twoFingerAxis == 2 && !navFired &&
+                                        kotlin.math.abs(hAcc) >= NAV_SWIPE_STEP
+                                    ) {
+                                        // Izquierda→derecha (hAcc>0) = atrás;
+                                        // derecha→izquierda = adelante. Una vez.
+                                        if (hAcc > 0) fire { it.mouseClick("back") }
+                                        else fire { it.mouseClick("forward") }
+                                        navFired = true
                                     }
                                 } else if (maxFingers < 2) {
                                     // Un dedo (y nunca hubo dos en este gesto, para
@@ -212,7 +250,7 @@ fun InputControlScreen(app: PandaApp) {
             ) {
                 Text(
                     "Un dedo: mover · toca para clic\n" +
-                        "Dos dedos: scroll · botones: clic medio/derecho",
+                        "Dos dedos: scroll · swipe →/← : atrás/adelante",
                     style = MaterialTheme.typography.bodySmall,
                     color = LocalPandaColors.current.green.copy(alpha = 0.5f),
                     textAlign = TextAlign.Center,

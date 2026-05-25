@@ -37,6 +37,7 @@ import io.github.pandaakira.apppanda.ui.onboarding.OnboardingScreen
 import io.github.pandaakira.apppanda.ui.status.MonitorScreen
 import io.github.pandaakira.apppanda.ui.sudo.SudoApprovalOverlay
 import io.github.pandaakira.apppanda.ui.theme.PandaIcons
+import io.github.pandaakira.apppanda.ui.theme.PandaTheme
 import io.github.pandaakira.apppanda.ui.themes.ThemesScreen
 
 private sealed class Dest(
@@ -62,7 +63,7 @@ private fun tabIcon(dest: Dest): ImageVector = when (dest) {
 private val tabs = listOf(Dest.Home, Dest.Monitor, Dest.Control, Dest.Sistema)
 
 @Composable
-fun AppNav(app: PandaApp) {
+fun AppNav(app: PandaApp, theme: PandaTheme) {
     val navController = rememberNavController()
     val config by app.settings.config.collectAsState(initial = null)
 
@@ -161,5 +162,5 @@ fun AppNav(app: PandaApp) {
     // Overlay de sudo: vive a nivel del AppNav y se superpone sobre lo que sea
     // que esté visible (Home, Modules, settings, etc.) cuando llega un
     // sudo_request por SSE.
-    SudoApprovalOverlay(app = app)
+    SudoApprovalOverlay(app = app, theme = theme)
 }

@@ -42,6 +42,9 @@ EV_SYN, EV_KEY, EV_REL = 0x00, 0x01, 0x02
 SYN_REPORT = 0x00
 REL_X, REL_Y, REL_WHEEL, REL_HWHEEL = 0x00, 0x01, 0x08, 0x06
 BTN_LEFT, BTN_RIGHT, BTN_MIDDLE = 0x110, 0x111, 0x112
+# Botones laterales: el compositor los mapea a botón 8 (atrás) y 9 (adelante),
+# que navegadores y gestores de archivos interpretan como retroceder/avanzar.
+BTN_SIDE, BTN_EXTRA = 0x113, 0x114
 
 # struct input_event en x86-64: timeval(2x long=16) + type(u16)+code(u16)+value(s32)
 _EVENT = struct.Struct("@llHHi")
@@ -227,8 +230,14 @@ def mouse_move(dx: int, dy: int) -> str:
     return "ok"
 
 
-_BUTTON_CODES = {"left": BTN_LEFT, "right": BTN_RIGHT, "middle": BTN_MIDDLE}
-_BUTTON_CLI = {"left": "0xC0", "right": "0xC1", "middle": "0xC2"}
+_BUTTON_CODES = {
+    "left": BTN_LEFT, "right": BTN_RIGHT, "middle": BTN_MIDDLE,
+    "back": BTN_SIDE, "forward": BTN_EXTRA,
+}
+_BUTTON_CLI = {
+    "left": "0xC0", "right": "0xC1", "middle": "0xC2",
+    "back": "0xC3", "forward": "0xC4",
+}
 
 
 def mouse_click(button: str) -> str:

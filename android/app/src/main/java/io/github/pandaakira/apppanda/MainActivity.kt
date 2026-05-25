@@ -48,7 +48,7 @@ class MainActivity : ComponentActivity() {
             }
             PandaControlTheme(theme = theme) {
                 ThemedBackground(app = app, theme = theme) {
-                    AppNav(app = app)
+                    AppNav(app = app, theme = theme)
                 }
             }
         }
