@@ -259,6 +259,29 @@ fun InputControlScreen(app: PandaApp) {
 
             Spacer(Modifier.height(12.dp))
 
+            // Encontrar cursor: agranda el puntero del PC ~2 s para ubicarlo
+            // cuando se pierde de vista (típico en la tele).
+            Button(
+                onClick = { fire { it.cursorHighlight() } },
+                enabled = api != null,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = LocalPandaColors.current.cyan.copy(alpha = 0.2f),
+                    contentColor = LocalPandaColors.current.cyan,
+                ),
+                shape = RoundedCornerShape(LocalPandaShapes.current.cornerSmall),
+            ) {
+                Icon(
+                    PandaIcons.myLocation,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.padding(horizontal = 4.dp))
+                Text("Encontrar cursor", style = MaterialTheme.typography.labelMedium)
+            }
+
+            Spacer(Modifier.height(8.dp))
+
             // Botones de clic
             Row(
                 Modifier.fillMaxWidth(),

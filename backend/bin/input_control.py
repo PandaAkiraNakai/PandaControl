@@ -11,7 +11,9 @@ Teclado/texto: wtype (no necesita daemon).
 
 from __future__ import annotations
 
+import glob
 import os
+import re
 import socket
 import struct
 import subprocess
@@ -265,6 +267,107 @@ def mouse_scroll(direction: str) -> str:
     if _YD.send(payload):
         return "ok"
     return _ydotool_cli(["click", _SCROLL_CLI[direction]])
+
+
+# ─── Resaltar cursor (agrandar temporalmente para ubicarlo) ───────────────────
+#
+# niri redibuja el cursor en caliente al cambiar `xcursor-size` en su config.
+# Para "encontrar el mouse" (p. ej. en la tele, donde el puntero se pierde) lo
+# agrandamos unos segundos y lo devolvemos a su tamaño solo. Editamos la línea
+# `xcursor-size` en la config de niri sin importar en qué archivo incluido viva.
+
+_NIRI_CONFIG_DIR = os.path.expanduser(
+    os.environ.get("NIRI_CONFIG_DIR", "~/.config/niri")
+)
+_XCURSOR_RE = re.compile(r"(xcursor-size\s+)(\d+)")
+
+_CURSOR_LOCK = threading.Lock()
+# gen: cada pulsación incrementa el contador; solo la reversión de la última
+# pulsación encoge el cursor (así pulsar de nuevo extiende la ventana en vez de
+# encoger antes de tiempo). normal: tamaño "de reposo" recordado entre pulsos.
+_CURSOR_STATE = {"gen": 0, "normal": None}
+
+
+def _find_cursor_cfg() -> tuple[str, int] | None:
+    """(ruta, tamaño_actual) del primer .kdl de niri que define xcursor-size."""
+    for path in sorted(glob.glob(
+        os.path.join(_NIRI_CONFIG_DIR, "**", "*.kdl"), recursive=True,
+    )):
+        try:
+            with open(path, encoding="utf-8") as f:
+                text = f.read()
+        except OSError:
+            continue
+        m = _XCURSOR_RE.search(text)
+        if m:
+            return path, int(m.group(2))
+    return None
+
+
+def _set_cursor_size(path: str, size: int) -> bool:
+    """Reescribe xcursor-size en `path`. Atómico (tmp + rename) para que niri
+    nunca lea el archivo a medio escribir."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+    except OSError:
+        return False
+    new = _XCURSOR_RE.sub(rf"\g<1>{size}", text, count=1)
+    if new == text:
+        return False
+    tmp = path + ".apppanda.tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(new)
+        os.replace(tmp, path)
+        return True
+    except OSError:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        return False
+
+
+def _cursor_nudge() -> None:
+    """Micro-movimiento (1px ida y vuelta) para que niri redibuje el cursor con
+    el nuevo tamaño al instante, sin esperar a que lo muevas."""
+    _YD.send(_move_payload(1, 0))
+    _YD.send(_move_payload(-1, 0))
+
+
+def cursor_highlight(big: int = 72, seconds: float = 2.0) -> str:
+    """Agranda el cursor de niri a `big` px durante `seconds` y lo devuelve a su
+    tamaño normal. Pensado para ubicar el puntero en la tele. Si se pulsa de
+    nuevo mientras está grande, extiende la ventana en vez de encoger antes."""
+    found = _find_cursor_cfg()
+    if found is None:
+        return "no encontré xcursor-size en la config de niri"
+    path, cur = found
+    with _CURSOR_LOCK:
+        # El tamaño normal es el de reposo: lo capturamos cuando vemos un valor
+        # distinto del agrandado y lo recordamos durante la ráfaga de pulsos.
+        if cur != big:
+            _CURSOR_STATE["normal"] = cur
+        normal = _CURSOR_STATE["normal"]
+        if normal is None:
+            normal = 24  # fallback si arrancamos con el cursor ya grande
+        _CURSOR_STATE["gen"] += 1
+        my_gen = _CURSOR_STATE["gen"]
+    if cur != big and not _set_cursor_size(path, big):
+        return "no pude editar la config de niri"
+    _cursor_nudge()
+
+    def _revert() -> None:
+        time.sleep(seconds)
+        with _CURSOR_LOCK:
+            if _CURSOR_STATE["gen"] != my_gen:
+                return  # una pulsación más nueva se hará cargo
+        if _set_cursor_size(path, normal):
+            _cursor_nudge()
+
+    threading.Thread(target=_revert, daemon=True, name="cursor-revert").start()
+    return "ok"
 
 
 # ─── Teclado (wtype) ──────────────────────────────────────────────────────────

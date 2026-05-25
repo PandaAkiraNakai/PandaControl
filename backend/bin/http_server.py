@@ -530,6 +530,10 @@ class _Handler(BaseHTTPRequestHandler):
                     return
                 result = api.input_mouse_scroll(direction)
                 body = {"direction": direction, "result": result}
+            elif path == "/api/v1/input/cursor/highlight":
+                # Agranda el cursor unos segundos para ubicarlo (útil en la tele).
+                result = api.input_cursor_highlight()
+                body = {"result": result}
             elif path == "/api/v1/input/key":
                 data = self._read_json_body()
                 key = (data.get("key") or "").strip()

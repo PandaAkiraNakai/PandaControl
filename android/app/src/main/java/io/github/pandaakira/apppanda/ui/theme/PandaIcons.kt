@@ -105,6 +105,10 @@ object PandaIcons {
         @Composable @ReadOnlyComposable get() = pick(
             Icons.Outlined.Mouse, Icons.Filled.Mouse,
             Icons.Rounded.Mouse, Icons.Sharp.Mouse)
+    val myLocation: ImageVector
+        @Composable @ReadOnlyComposable get() = pick(
+            Icons.Outlined.MyLocation, Icons.Filled.MyLocation,
+            Icons.Rounded.MyLocation, Icons.Sharp.MyLocation)
     val palette: ImageVector
         @Composable @ReadOnlyComposable get() = pick(
             Icons.Outlined.Palette, Icons.Filled.Palette,

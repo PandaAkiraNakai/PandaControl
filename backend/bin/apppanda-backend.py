@@ -1398,6 +1398,7 @@ def main() -> None:
             input_mouse_move=input_control.mouse_move,
             input_mouse_click=input_control.mouse_click,
             input_mouse_scroll=input_control.mouse_scroll,
+            input_cursor_highlight=input_control.cursor_highlight,
             input_key_press=input_control.key_press,
             input_type_text=input_control.type_text,
         )

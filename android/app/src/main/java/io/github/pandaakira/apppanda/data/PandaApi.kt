@@ -204,6 +204,10 @@ class PandaApi(
     suspend fun mouseScroll(direction: String) =
         action("/api/v1/input/mouse/scroll", body = mapOf("direction" to direction))
 
+    /** Agranda el cursor del PC unos segundos para ubicarlo (p. ej. en la tele). */
+    suspend fun cursorHighlight() =
+        action("/api/v1/input/cursor/highlight")
+
     suspend fun keyPress(key: String) =
         action("/api/v1/input/key", body = mapOf("key" to key))
 
