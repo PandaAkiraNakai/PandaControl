@@ -1,8 +1,8 @@
 # apppanda-backend
 
 Daemon Python (stdlib) que expone HTTP REST + SSE para que la app Android
-Panda lea métricas y eventos de la torre. Service systemd, corre como
-`sergioc`, independiente del bot de Telegram.
+Panda lea métricas y eventos de la torre. Service systemd, corre como tu
+usuario (no root).
 
 ## Endpoints (Fase 1: read-only)
 
@@ -33,32 +33,16 @@ públicos.
 | `GET /api/v1/updates` | checkupdates parsed |
 | `GET /api/v1/themes` | temas visuales (`*.json` de `[themes].dir`) |
 | `GET /api/v1/themes/image?name=...` | imagen de fondo de un tema (archivo de la carpeta) |
-| `GET /api/v1/browser/tabs` | pestañas abiertas de Brave (CDP) |
-| `GET /api/v1/browser/links?target=ID` | elementos clicables de la página + etiqueta |
-| `GET /api/v1/web/search?q=...` | búsqueda web (DuckDuckGo HTML) |
-| `GET /api/v1/youtube/search?q=...` | búsqueda YouTube (ytInitialData) |
-| `GET /api/v1/events` | SSE: `hello`, `metric_tick`, `service_failed`, `session_new`, `boot`, `resume` |
+| `GET /api/v1/events` | SSE: `hello`, `metric_tick`, `service_failed`, `session_new`, `boot`, `resume`, `sudo_request` |
 
-## Módulo Navegador (Brave vía CDP)
+## Módulo Control (mouse + teclado)
 
-`browser.py` controla Brave por Chrome DevTools Protocol con un cliente
-WebSocket mínimo de stdlib (sin librerías externas). Requiere lanzar Brave
-con `--remote-debugging-port=9222 --remote-allow-origins=*`, escuchando solo
-en `127.0.0.1` (cómodo vía `~/.config/brave-flags.conf`). Las búsquedas web
-y de YouTube se parsean por HTTP, sin abrir el navegador.
-
-Acciones (POST, body JSON):
-
-| Path | Body | Qué hace |
-|---|---|---|
-| `/api/v1/browser/open` | `{url}` | abre una URL o búsqueda en una pestaña nueva |
-| `/api/v1/browser/navigate` | `{target, url}` | navega la pestaña `target` |
-| `/api/v1/browser/{activate\|close\|reload\|back\|forward}` | `{target}` | control de pestaña |
-| `/api/v1/browser/scroll` | `{target, dir}` | scroll (`up\|down\|top\|bottom`) con rueda CDP |
-| `/api/v1/browser/click` | `{target, text}` | clic en el enlace/botón visible que contenga `text` |
-| `/api/v1/browser/click_index` | `{target, idx}` | clic en el elemento `idx` listado por `/browser/links` |
-| `/api/v1/browser/type` | `{target, text, submit}` | escribe en el campo de texto principal |
-| `/api/v1/youtube/play` | `{videoId, target?}` | reproduce un video en Brave |
+`input_control.py` inyecta input al compositor: el mouse vía el socket de
+`ydotoold` (movimiento interpolado a alta frecuencia, clic izq/medio/der,
+botones laterales atrás/adelante y scroll) y el teclado vía `wtype` (teclas
+especiales, atajos y texto libre). Endpoints POST: `/api/v1/input/mouse/move`,
+`/click`, `/scroll`, `/stream` (deltas en streaming) y `/api/v1/input/key`,
+`/api/v1/input/type`.
 
 ## Inventario (después de instalar)
 
@@ -66,10 +50,10 @@ Acciones (POST, body JSON):
 |---|---|---|---|
 | `/usr/local/bin/apppanda-backend` | root:root | 0755 | El daemon |
 | `/usr/local/bin/http_server_panda.py` | root:root | 0644 | Módulo HTTP (symlink: `http_server.py`) |
-| `/etc/apppanda-backend/config.toml` | sergioc:sergioc | 0400 | Tokens + bind + monitor + opcional vps/apps/etc |
+| `/etc/apppanda-backend/config.toml` | $USER:$USER | 0400 | Tokens + bind + monitor + opcional vps/apps/etc |
 | `/etc/systemd/system/apppanda-backend.service` | root:root | 0644 | Unit |
-| `/var/lib/apppanda-backend/metrics.db` | sergioc:sergioc | 0600 | SQLite WAL del histórico |
-| `/var/log/apppanda-backend/audit.log` | sergioc:sergioc | 0640 + `chattr +a` | Audit JSONL append-only |
+| `/var/lib/apppanda-backend/metrics.db` | $USER:$USER | 0600 | SQLite WAL del histórico |
+| `/var/log/apppanda-backend/audit.log` | $USER:$USER | 0640 + `chattr +a` | Audit JSONL append-only |
 
 ## Instalar
 
@@ -81,7 +65,7 @@ sudo bash INSTALL.sh
 Editar el config con un token y arrancar:
 
 ```bash
-sudo -u sergioc $EDITOR /etc/apppanda-backend/config.toml
+sudo -u $USER $EDITOR /etc/apppanda-backend/config.toml
 sudo systemctl start apppanda-backend
 sudo systemctl enable apppanda-backend
 sudo journalctl -fu apppanda-backend

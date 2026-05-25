@@ -42,13 +42,12 @@ PC; si no, no existe para nadie más.
 | **Status** | CPU, RAM, disco, red, temperaturas, GPUs y estado SMART en vivo. |
 | **Trends** | Gráficas históricas 1h / 6h / 24h, dibujadas nativamente en Canvas. |
 | **Media** | Control MPRIS (play/pausa, seek ±15s, fullscreen del video), cambiar el sink de audio, prender/apagar pantallas (DPMS), lanzar apps GUI, lanzar juegos de Steam y comandos del WM `niri` desde una whitelist estricta. |
-| **Control** | Mouse y teclado remotos: un **touchpad** que mueve el cursor por deltas, clic izquierdo/medio/derecho, scroll, teclas especiales y atajos (Esc, Tab, flechas, Ctrl+C/V/Z, Alt+Tab, etc.) y escritura de texto libre. Mouse vía `ydotool`, teclado vía `wtype`. |
-| **IA** | Chat con [Claude Code](https://claude.com/claude-code) corriendo en tu PC, con sesión persistente y reinyección de contexto al reconectar. |
+| **Control** | Mouse y teclado remotos: un **touchpad** que mueve el cursor por deltas, clic izquierdo/medio/derecho, scroll de dos dedos y swipe horizontal de dos dedos para navegar atrás/adelante, teclas especiales y atajos (Esc, Tab, flechas, Ctrl+C/V/Z, Alt+Tab, etc.) y escritura de texto libre. Mouse vía `ydotool`, teclado vía `wtype`. |
 | **Sistema** | Apagar / reiniciar / suspender / bloquear (con confirmación), listar y matar procesos, gestionar servicios (start/stop/restart), ver logs de `journalctl`, revisar y aplicar actualizaciones (`checkupdates`), ver vecinos de la LAN y consultar tus VPS por SSH. |
 | **Archivos** | Listar, descargar y subir archivos de los directorios que tú compartas. |
 | **Temas** | Cambiar el look completo de la app: cada tema es un paquete que define **colores, fuente, estilo de iconos, formas/bordes y fondos opcionales** (imágenes de la misma carpeta; si hay varias, eliges con qué wallpaper aplicar el tema). Los temas viven como archivos `*.json` en una carpeta del PC (`[themes].dir`); la app los lista y aplica al vuelo. Para agregar un tema basta dejar un `.json` nuevo — no hay que recompilar. Incluye *Cyberpunk* (default), *Synthwave*, *Matrix*, *Nord* y *Soft* (AMOLED). |
 | **Push del sistema** | Un `ForegroundService` mantiene el SSE vivo en segundo plano y dispara notificaciones nativas ante alertas con histéresis (CPU/RAM/disco/temps/GPU/carga), servicios caídos, sesiones nuevas, boot o salida de suspensión. |
-| **Aprobación de sudo remota** | Cuando tu PC necesita privilegios de root, el celular recibe una notificación urgente (con vibración y tono disparados a mano para sobrevivir al modo silencioso de OEMs como Honor o Xiaomi) y tú apruebas o rechazas desde un modal dentro de la app. |
+| **Aprobación de sudo remota** | Cuando tu PC necesita privilegios de root, el celular recibe una notificación urgente (con vibración y tono disparados a mano para sobrevivir al modo silencioso de OEMs como Honor o Xiaomi). El modal muestra el comando que se va a ejecutar; para **aprobar** te pide confirmar tu identidad con **huella** (o el PIN/patrón del dispositivo), mientras que rechazar es directo. |
 
 ## Capturas
 
@@ -193,7 +192,7 @@ tokens = ["<pega aquí el token del paso 4>"]
 > localmente.
 
 Más abajo, en [Configuración](#configuración), están las secciones
-opcionales (IA, archivos compartidos, VPS, SMART, etc.).
+opcionales (archivos compartidos, VPS, SMART, etc.).
 
 ### 6. Arranca el servicio y verifica
 
@@ -299,9 +298,6 @@ referencia comentada completa está en
 [`backend/config/config.example.toml`](backend/config/config.example.toml).
 Las secciones más útiles:
 
-- **`[ai]`** — chat con Claude Code. Requiere el binario `claude` en el PATH
-  del usuario que corre el daemon. Define `working_dir` y `default_model`
-  (`opus` / `sonnet` / `haiku`, o vacío).
 - **`[files]`** — `shared_dirs` define qué carpetas son accesibles desde el
   celular (descarga y subida). Solo se comparte lo que listes explícitamente.
 - **`[themes]`** — `dir` es la carpeta de temas visuales (`*.json`). Cada tema
@@ -335,7 +331,8 @@ Después de cualquier cambio:
 PandaControl/
 ├── backend/                      Daemon Python (HTTP + SSE)
 │   ├── bin/                      apppanda-backend.py, http_server.py,
-│   │                             claude_runner.py, sudo_broker.py, ...
+│   │                             input_control.py, sudo_broker.py,
+│   │                             sudo-app-askpass.py
 │   ├── config/                   service unit, config.example.toml,
 │   │                             regla de polkit
 │   ├── INSTALL.sh · UNINSTALL.sh
@@ -365,8 +362,7 @@ GET  /api/v1/net/neighbors
 GET  /api/v1/vps  ·  /vps/{alias}/summary
 GET  /api/v1/games  ·  /apps  ·  /updates
 GET  /api/v1/themes  ·  /themes/image?name=FILE
-GET  /api/v1/browser/tabs  ·  /browser/links?target=ID
-GET  /api/v1/web/search?q=...  ·  /youtube/search?q=...
+GET  /api/v1/files  ·  /files/download?dir=N&name=FILE
 GET  /api/v1/events   (SSE: metric_tick / alert / service_failed /
                        session_new / boot / resume / sudo_request)
 
@@ -385,17 +381,12 @@ POST /api/v1/media/{player}/{play-pause|next|previous|seek:+15|seek:-15|fullscre
 POST /api/v1/apps/{name}/launch
 POST /api/v1/games/{appid}/launch
 POST /api/v1/net/wake/{alias}
-POST /api/v1/browser/open              {url}
-POST /api/v1/browser/navigate          {target, url}
-POST /api/v1/browser/{activate|close|reload|back|forward}   {target}
-POST /api/v1/browser/scroll            {target, dir: up|down|top|bottom}
-POST /api/v1/browser/click             {target, text}
-POST /api/v1/browser/click_index       {target, idx}
-POST /api/v1/browser/type              {target, text, submit}
-POST /api/v1/youtube/play              {videoId, target?}
+POST /api/v1/input/mouse/{move|click|scroll}  ·  /input/mouse/stream
+POST /api/v1/input/{key|type}
+POST /api/v1/files/upload          (X-Filename header)
 POST /api/v1/sudo/request                            (askpass broker)
 GET  /api/v1/sudo/{rid}/wait?timeout=N
-POST /api/v1/sudo/{rid}/decision   {approve: bool}
+POST /api/v1/sudo/{rid}/decision   {approve: bool}    (huella en la app)
 ```
 
 </details>
@@ -410,6 +401,9 @@ POST /api/v1/sudo/{rid}/decision   {approve: bool}
   `polkit` de alcance reducido.
 - **Audit log append-only** (`chattr +a`, formato JSONL): toda acción queda
   registrada y el log no se puede reescribir.
+- **Aprobación de sudo con biometría:** elevar privilegios desde el celular
+  exige confirmar tu huella (o el PIN/patrón del dispositivo) en el modal, que
+  además muestra el comando exacto que se va a ejecutar.
 - **El bind por defecto es `127.0.0.1`**: hay que abrirlo explícitamente a la
   IP de Tailscale para usarlo desde el celular.
 

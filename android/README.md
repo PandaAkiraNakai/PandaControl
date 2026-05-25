@@ -32,7 +32,7 @@ app/src/main/java/io/github/pandaakira/apppanda/
     ├── home/                # live cards + lista eventos SSE
     ├── status/              # tabs Sistema/Disco/Red/Temps/GPU
     ├── trends/              # selector range + line chart (Canvas)
-    └── browser/             # módulo Navegador (Brave vía CDP)
+    └── input/               # módulo Control: touchpad mouse + teclado
 ```
 
 ## Build
@@ -81,7 +81,7 @@ O ponlo en Telegram/Drive y bájalo al celular.
 | Home | Cards CPU/RAM/GPU/Temp en vivo desde SSE + últimos eventos (boot/service_failed/session_new) |
 | Status | Tabs Sistema · Disco · Red · Temps · GPU (pull, snapshot al entrar a cada tab) |
 | Trends | Selector 1h/6h/24h + line chart Canvas (CPU/RAM/GPU/Disk en %, CPU/GPU en °C) |
-| Navegador | Control de Brave vía CDP: abrir/buscar y elegir link, YouTube, pestañas y control de página (scroll, clic, escribir, listar elementos clicables). Se entra desde Media. |
+| Control | Touchpad de mouse (mover, clic, scroll, swipe de dos dedos atrás/adelante) + teclado (teclas especiales, atajos y texto libre). Se entra desde Control. |
 | Setup | Form de configuración del backend |
 
 ## Cómo cambiar a Tailscale en la torre
@@ -90,7 +90,7 @@ El backend bindea a `127.0.0.1` por default — la app desde el celular no
 lo alcanza. Para abrirlo:
 
 ```bash
-sudo -u sergioc $EDITOR /etc/apppanda-backend/config.toml
+sudo -u $USER $EDITOR /etc/apppanda-backend/config.toml
 # cambia: host = "100.64.0.5"   (IP Tailscale de tu torre)
 sudo systemctl restart apppanda-backend
 ```
