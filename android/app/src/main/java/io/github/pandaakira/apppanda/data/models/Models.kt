@@ -270,6 +270,41 @@ data class FileUploadResponse(
 )
 
 @Serializable
+data class ThemeColors(
+    val background: String,
+    val surface: String,
+    val surfaceHigh: String,
+    val onSurface: String,
+    val onSurfaceMuted: String,
+    val yellow: String,
+    val magenta: String,
+    val cyan: String,
+    val green: String,
+    val red: String,
+    val orange: String,
+)
+
+@Serializable
+data class ThemeDef(
+    val id: String,
+    val name: String,
+    val dark: Boolean = true,
+    val font: String = "default",
+    val iconStyle: String = "outlined",
+    val corner: Int = 12,
+    val border: Int = 1,
+    val backgroundImage: String = "",
+    val backgroundImages: List<String> = emptyList(),
+    val colors: ThemeColors,
+)
+
+@Serializable
+data class ThemesResponse(
+    val dir: String = "",
+    val themes: List<ThemeDef> = emptyList(),
+)
+
+@Serializable
 data class ActionResult(
     val result: String = "",
     val error: String? = null,

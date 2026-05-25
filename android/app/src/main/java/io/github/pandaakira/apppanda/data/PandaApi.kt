@@ -22,6 +22,7 @@ import io.github.pandaakira.apppanda.data.models.ServicesResponse
 import io.github.pandaakira.apppanda.data.models.SseEvent
 import io.github.pandaakira.apppanda.data.models.SystemStatus
 import io.github.pandaakira.apppanda.data.models.TempsResponse
+import io.github.pandaakira.apppanda.data.models.ThemesResponse
 import io.github.pandaakira.apppanda.data.models.UpdatesResponse
 import io.github.pandaakira.apppanda.data.models.VersionResponse
 import io.github.pandaakira.apppanda.data.models.VpsListResponse
@@ -223,6 +224,15 @@ class PandaApi(
 
     suspend fun apps(): AppsResponse =
         client.get(url("/api/v1/apps")).body()
+
+    suspend fun themes(): ThemesResponse =
+        client.get(url("/api/v1/themes")).body()
+
+    /** Baja los bytes de una imagen de fondo de tema desde la carpeta del PC. */
+    suspend fun themeImage(name: String): ByteArray {
+        val encoded = java.net.URLEncoder.encode(name, "UTF-8")
+        return client.get(url("/api/v1/themes/image?name=$encoded")).body()
+    }
 
     // ─── Files ────────────────────────────────────────────────────────────
 

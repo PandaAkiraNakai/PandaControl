@@ -1,0 +1,21 @@
+{
+  "name": "Soft",
+  "dark": true,
+  "font": "sans",
+  "iconStyle": "rounded",
+  "corner": 6,
+  "border": 1,
+  "colors": {
+    "background": "#000000",
+    "surface": "#0B0B0C",
+    "surfaceHigh": "#161618",
+    "onSurface": "#E8E8EA",
+    "onSurfaceMuted": "#80808A",
+    "yellow": "#C7C9CF",
+    "magenta": "#9A9CA6",
+    "cyan": "#8B95A0",
+    "green": "#8FA992",
+    "red": "#BC757D",
+    "orange": "#B49B79"
+  }
+}

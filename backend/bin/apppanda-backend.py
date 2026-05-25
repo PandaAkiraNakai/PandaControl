@@ -124,6 +124,11 @@ def load_config(path: str) -> dict:
     # que corre el daemon.
     cfg["files"].setdefault("shared_dirs", ["~/Descargas"])
     cfg["files"].setdefault("max_upload_mb", 500)
+    # Temas visuales de la app: cada *.json en este dir define una paleta.
+    # La app los lista vía /api/v1/themes y los aplica al vuelo. Agregar un
+    # archivo nuevo basta — no hace falta reiniciar el daemon ni recompilar.
+    cfg.setdefault("themes", {})
+    cfg["themes"].setdefault("dir", "~/.config/apppanda-backend/temas")
     cfg["steam"].setdefault("exclude_appids", [
         "228980", "1070560", "1391110", "1493710", "1628350", "4183110",
     ])

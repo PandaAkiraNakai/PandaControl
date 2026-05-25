@@ -1,4 +1,6 @@
 package io.github.pandaakira.apppanda.ui.sudo
+import io.github.pandaakira.apppanda.ui.theme.LocalPandaShapes
+import io.github.pandaakira.apppanda.ui.theme.LocalPandaColors
 
 import android.app.NotificationManager
 import android.content.Context
@@ -38,9 +40,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.github.pandaakira.apppanda.PandaApp
 import io.github.pandaakira.apppanda.service.AlertsService
-import io.github.pandaakira.apppanda.ui.theme.PandaGreen
-import io.github.pandaakira.apppanda.ui.theme.PandaRed
-import io.github.pandaakira.apppanda.ui.theme.PandaYellow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -126,16 +125,16 @@ fun SudoApprovalOverlay(app: PandaApp) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(LocalPandaShapes.current.corner))
                     .background(MaterialTheme.colorScheme.surface)
-                    .border(2.dp, PandaYellow, RoundedCornerShape(16.dp))
+                    .border(LocalPandaShapes.current.border, LocalPandaColors.current.yellow, RoundedCornerShape(LocalPandaShapes.current.corner))
                     .padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 Text(
                     "// SUDO REQUEST",
                     style = MaterialTheme.typography.labelSmall,
-                    color = PandaYellow,
+                    color = LocalPandaColors.current.yellow,
                 )
                 Text(
                     "¿Aprobar elevación de privilegios?",
@@ -181,8 +180,8 @@ fun SudoApprovalOverlay(app: PandaApp) {
                         result!!,
                         style = MaterialTheme.typography.titleMedium,
                         color = when (result) {
-                            "APROBADO" -> PandaGreen
-                            "RECHAZADO" -> PandaRed
+                            "APROBADO" -> LocalPandaColors.current.green
+                            "RECHAZADO" -> LocalPandaColors.current.red
                             else -> MaterialTheme.colorScheme.error
                         },
                     )
@@ -197,8 +196,8 @@ fun SudoApprovalOverlay(app: PandaApp) {
                             onClick = { decide(true) },
                             enabled = !busy,
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = PandaGreen.copy(alpha = 0.3f),
-                                contentColor = PandaGreen,
+                                containerColor = LocalPandaColors.current.green.copy(alpha = 0.3f),
+                                contentColor = LocalPandaColors.current.green,
                             ),
                             modifier = Modifier.weight(1f).height(60.dp),
                         ) { Text("Aprobar") }

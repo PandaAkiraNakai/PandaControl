@@ -1,4 +1,5 @@
 package io.github.pandaakira.apppanda.ui.status
+import io.github.pandaakira.apppanda.ui.theme.LocalPandaColors
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -37,10 +38,6 @@ import io.github.pandaakira.apppanda.ui.components.StatBar
 import io.github.pandaakira.apppanda.ui.more.LogsScreen
 import io.github.pandaakira.apppanda.ui.more.ProcessesScreen
 import io.github.pandaakira.apppanda.ui.trends.TrendsScreen
-import io.github.pandaakira.apppanda.ui.theme.PandaCyan
-import io.github.pandaakira.apppanda.ui.theme.PandaGreen
-import io.github.pandaakira.apppanda.ui.theme.PandaMagenta
-import io.github.pandaakira.apppanda.ui.theme.PandaYellow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -112,7 +109,7 @@ private fun SystemTab(app: PandaApp) {
         error?.let { item { ErrorCard(it) } }
         data?.let { d ->
             item {
-                PandaCard(title = "HOST", accent = PandaYellow) {
+                PandaCard(title = "HOST", accent = LocalPandaColors.current.yellow) {
                     KeyValue("Hostname", d.hostname)
                     KeyValue("Kernel", d.kernel)
                     KeyValue("Uptime", "%.0f s".format(d.uptimeS))
@@ -120,7 +117,7 @@ private fun SystemTab(app: PandaApp) {
                 }
             }
             item {
-                PandaCard(title = "CPU + LOAD", accent = PandaMagenta) {
+                PandaCard(title = "CPU + LOAD", accent = LocalPandaColors.current.magenta) {
                     StatBar("CPU", d.cpu.pct)
                     KeyValue("Cores", d.cpu.cores.toString())
                     KeyValue("Load 1m / 5m / 15m",
@@ -128,7 +125,7 @@ private fun SystemTab(app: PandaApp) {
                 }
             }
             item {
-                PandaCard(title = "RAM", accent = PandaCyan) {
+                PandaCard(title = "RAM", accent = LocalPandaColors.current.cyan) {
                     StatBar("RAM", d.ram.pct)
                     KeyValue("Total", "%.2f GB".format(d.ram.totalG))
                     KeyValue("Usada", "%.2f GB".format(d.ram.usedG))
@@ -161,7 +158,7 @@ private fun DiskTab(app: PandaApp) {
         error?.let { item { ErrorCard(it) } }
         data?.mounts?.forEach { m ->
             item {
-                PandaCard(title = m.mount, accent = PandaGreen) {
+                PandaCard(title = m.mount, accent = LocalPandaColors.current.green) {
                     StatBar("Uso", m.pct)
                     KeyValue("Origen", m.source)
                     KeyValue("Total", "%.1f GB".format(m.sizeG))
@@ -197,7 +194,7 @@ private fun NetTab(app: PandaApp) {
         data?.let { d ->
             d.interfaces.forEach { (name, info) ->
                 item {
-                    PandaCard(title = "IFACE :: $name", accent = PandaCyan) {
+                    PandaCard(title = "IFACE :: $name", accent = LocalPandaColors.current.cyan) {
                         KeyValue("RX", fmtBps(info.rxBps))
                         KeyValue("TX", fmtBps(info.txBps))
                         KeyValue("RX total", fmtBytes(info.rxTotal.toDouble()))
@@ -207,7 +204,7 @@ private fun NetTab(app: PandaApp) {
             }
             if (d.pings.isNotEmpty()) {
                 item {
-                    PandaCard(title = "PING", accent = PandaYellow) {
+                    PandaCard(title = "PING", accent = LocalPandaColors.current.yellow) {
                         d.pings.forEach { p ->
                             KeyValue(
                                 p.host,
@@ -247,7 +244,7 @@ private fun TempsTab(app: PandaApp) {
             val grouped = temps.groupBy { it.chip }
             grouped.forEach { (chip, rows) ->
                 item {
-                    PandaCard(title = chip, accent = PandaMagenta) {
+                    PandaCard(title = chip, accent = LocalPandaColors.current.magenta) {
                         rows.forEach { r ->
                             KeyValue(r.label, "%.1f °C".format(r.c))
                         }
@@ -298,7 +295,7 @@ private fun GpuTab(app: PandaApp) {
                     item {
                         PandaCard(
                             title = "${g.vendor} :: ${g.name}",
-                            accent = if (idx == 0) PandaYellow else PandaMagenta,
+                            accent = if (idx == 0) LocalPandaColors.current.yellow else LocalPandaColors.current.magenta,
                         ) {
                             // Siempre mostrar uso y VRAM, incluso si son 0
                             StatBar("Uso", g.pct ?: 0.0)

@@ -1,4 +1,5 @@
 package io.github.pandaakira.apppanda.ui.home
+import io.github.pandaakira.apppanda.ui.theme.LocalPandaColors
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -29,8 +30,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Alignment
-import io.github.pandaakira.apppanda.ui.theme.PandaGreen
-import io.github.pandaakira.apppanda.ui.theme.PandaRed
 import kotlinx.coroutines.delay
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -42,9 +41,6 @@ import io.github.pandaakira.apppanda.ui.components.EmptyState
 import io.github.pandaakira.apppanda.ui.components.KeyValue
 import io.github.pandaakira.apppanda.ui.components.PandaCard
 import io.github.pandaakira.apppanda.ui.components.StatBar
-import io.github.pandaakira.apppanda.ui.theme.PandaCyan
-import io.github.pandaakira.apppanda.ui.theme.PandaMagenta
-import io.github.pandaakira.apppanda.ui.theme.PandaYellow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -134,7 +130,7 @@ fun HomeScreen(app: PandaApp, onGoSetup: () -> Unit) {
         }
 
         item {
-            PandaCard(title = "LIVE :: CPU + RAM", accent = PandaYellow) {
+            PandaCard(title = "LIVE :: CPU + RAM", accent = LocalPandaColors.current.yellow) {
                 StatBar("CPU", liveCpu ?: status?.cpu?.pct ?: 0.0)
                 StatBar("RAM", liveRam ?: status?.ram?.pct ?: 0.0)
                 status?.let {
@@ -147,7 +143,7 @@ fun HomeScreen(app: PandaApp, onGoSetup: () -> Unit) {
         }
 
         item {
-            PandaCard(title = "LIVE :: GPU + TEMPS", accent = PandaMagenta) {
+            PandaCard(title = "LIVE :: GPU + TEMPS", accent = LocalPandaColors.current.magenta) {
                 StatBar("GPU", liveGpu ?: 0.0)
                 Spacer(Modifier.height(4.dp))
                 KeyValue("Temp CPU", liveCpuTemp?.let { "%.1f °C".format(it) } ?: "—")
@@ -156,7 +152,7 @@ fun HomeScreen(app: PandaApp, onGoSetup: () -> Unit) {
         }
 
         item {
-            PandaCard(title = "EVENTS :: ${events.size}", accent = PandaCyan) {
+            PandaCard(title = "EVENTS :: ${events.size}", accent = LocalPandaColors.current.cyan) {
                 if (events.isEmpty()) {
                     EmptyState("Esperando eventos del backend (alerts, boot, services failed…)")
                 } else {
@@ -193,9 +189,11 @@ private fun HomeHeader(app: PandaApp, hostname: String?) {
         }
     }
     val connected = lastEventAt > 0 && (nowMs - lastEventAt) < 30_000
+    val okColor = LocalPandaColors.current.green
+    val errColor = LocalPandaColors.current.red
     Row(verticalAlignment = Alignment.CenterVertically) {
         Canvas(modifier = Modifier.size(10.dp)) {
-            drawCircle(if (connected) PandaGreen else PandaRed)
+            drawCircle(if (connected) okColor else errColor)
         }
         Spacer(Modifier.width(8.dp))
         Text(
@@ -207,7 +205,7 @@ private fun HomeHeader(app: PandaApp, hostname: String?) {
         Text(
             if (connected) "conectado" else "sin conexión",
             style = MaterialTheme.typography.labelSmall,
-            color = if (connected) PandaGreen else PandaRed,
+            color = if (connected) okColor else errColor,
         )
     }
 }

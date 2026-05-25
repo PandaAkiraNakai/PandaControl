@@ -49,12 +49,6 @@ install -m 0644 -o root -g root \
     "$SRC_DIR/bin/sudo_broker.py" \
     /usr/local/bin/sudo_broker.py
 
-# 2e. claude_runner module (imported por el daemon para módulo IA)
-echo "==> Installing /usr/local/bin/claude_runner.py"
-install -m 0644 -o root -g root \
-    "$SRC_DIR/bin/claude_runner.py" \
-    /usr/local/bin/claude_runner.py
-
 # 2f. input_control module (control de mouse y teclado vía ydotool / wtype)
 echo "==> Installing /usr/local/bin/input_control.py"
 install -m 0644 -o root -g root \
@@ -111,6 +105,26 @@ if [ ! -f /etc/apppanda-backend/config.toml ]; then
 else
     echo "==> /etc/apppanda-backend/config.toml ya existe (no se modifica)"
     echo "    (revisa config.example.toml si hay settings nuevos)"
+fi
+
+# 6b. Carpeta de temas (módulo Temas) + ejemplos
+#     Default del config: ~/.config/apppanda-backend/temas del usuario daemon.
+#     Idempotente: solo siembra ejemplos si la carpeta está vacía, para no
+#     pisar temas que el usuario haya agregado.
+TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+TARGET_HOME="${TARGET_HOME:-/home/$TARGET_USER}"
+THEMES_DIR="$TARGET_HOME/.config/apppanda-backend/temas"
+echo "==> Creating $THEMES_DIR"
+install -d -m 0755 -o "$TARGET_USER" -g "$TARGET_GROUP" \
+    "$TARGET_HOME/.config" "$TARGET_HOME/.config/apppanda-backend" "$THEMES_DIR"
+if [ -z "$(ls -A "$THEMES_DIR" 2>/dev/null)" ] && [ -d "$SRC_DIR/config/temas" ]; then
+    echo "    Seeding temas de ejemplo"
+    for t in "$SRC_DIR"/config/temas/*.json; do
+        [ -e "$t" ] || continue
+        install -m 0644 -o "$TARGET_USER" -g "$TARGET_GROUP" "$t" "$THEMES_DIR/"
+    done
+else
+    echo "    ($THEMES_DIR ya tiene temas — no se siembran ejemplos)"
 fi
 
 # 7. Reload systemd + polkit

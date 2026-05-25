@@ -1,4 +1,7 @@
 package io.github.pandaakira.apppanda.ui.media
+import io.github.pandaakira.apppanda.ui.theme.LocalPandaShapes
+import io.github.pandaakira.apppanda.ui.theme.PandaIcons
+import io.github.pandaakira.apppanda.ui.theme.LocalPandaColors
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -15,20 +18,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Apps
-import androidx.compose.material.icons.outlined.AspectRatio
-import androidx.compose.material.icons.outlined.Bolt
-import androidx.compose.material.icons.outlined.ChevronLeft
-import androidx.compose.material.icons.outlined.ChevronRight
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Fullscreen
-import androidx.compose.material.icons.outlined.GridView
-import androidx.compose.material.icons.outlined.KeyboardArrowDown
-import androidx.compose.material.icons.outlined.KeyboardArrowUp
-import androidx.compose.material.icons.outlined.Mouse
-import androidx.compose.material.icons.outlined.SportsEsports
-import androidx.compose.material.icons.outlined.Tv
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -52,11 +41,6 @@ import io.github.pandaakira.apppanda.ui.components.ActionResultBanner
 import io.github.pandaakira.apppanda.ui.components.PandaCard
 import io.github.pandaakira.apppanda.ui.components.ScreenHeader
 import io.github.pandaakira.apppanda.ui.components.rememberActionExecutor
-import io.github.pandaakira.apppanda.ui.theme.PandaCyan
-import io.github.pandaakira.apppanda.ui.theme.PandaGreen
-import io.github.pandaakira.apppanda.ui.theme.PandaMagenta
-import io.github.pandaakira.apppanda.ui.theme.PandaOrange
-import io.github.pandaakira.apppanda.ui.theme.PandaYellow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -101,32 +85,32 @@ fun MediaTabScreen(app: PandaApp, onNavigate: (String) -> Unit) {
 
     val tiles = listOf(
         MediaEntry("media", "Reproductor", "MPRIS · seek · fullscreen · salida de audio",
-            Icons.Outlined.Bolt, PandaMagenta),
+            PandaIcons.bolt, LocalPandaColors.current.magenta),
         MediaEntry("input", "Mouse/Teclado", "touchpad · clics · atajos",
-            Icons.Outlined.Mouse, PandaGreen),
+            PandaIcons.mouse, LocalPandaColors.current.green),
         MediaEntry("displays", "Pantallas", "niri outputs · DPMS",
-            Icons.Outlined.Tv, PandaCyan),
+            PandaIcons.tv, LocalPandaColors.current.cyan),
         MediaEntry("apps", "Apps", "lanzar GUI vía systemd-run",
-            Icons.Outlined.Apps, PandaCyan),
+            PandaIcons.apps, LocalPandaColors.current.cyan),
         MediaEntry("games", "Juegos", "biblioteca Steam · gamescope-auto",
-            Icons.Outlined.SportsEsports, PandaOrange),
+            PandaIcons.sportsEsports, LocalPandaColors.current.orange),
     )
 
     val groups = listOf(
         NiriGroup("ventana", listOf(
-            NiriCmd("fullscreen-window", "Fullscreen", Icons.Outlined.Fullscreen,   PandaMagenta),
-            NiriCmd("maximize-column",   "Maximizar",  Icons.Outlined.AspectRatio,  PandaOrange),
-            NiriCmd("close-window",      "Cerrar",     Icons.Outlined.Close,        MaterialTheme.colorScheme.error),
+            NiriCmd("fullscreen-window", "Fullscreen", PandaIcons.fullscreen,   LocalPandaColors.current.magenta),
+            NiriCmd("maximize-column",   "Maximizar",  PandaIcons.aspectRatio,  LocalPandaColors.current.orange),
+            NiriCmd("close-window",      "Cerrar",     PandaIcons.close,        MaterialTheme.colorScheme.error),
         )),
         NiriGroup("foco · columnas y workspaces", listOf(
-            NiriCmd("focus-column-left",    "Col. ←", Icons.Outlined.ChevronLeft,       PandaCyan),
-            NiriCmd("focus-column-right",   "Col. →", Icons.Outlined.ChevronRight,      PandaCyan),
-            NiriCmd("focus-workspace-up",   "WS ↑",   Icons.Outlined.KeyboardArrowUp,   PandaYellow),
-            NiriCmd("focus-workspace-down", "WS ↓",   Icons.Outlined.KeyboardArrowDown, PandaYellow),
+            NiriCmd("focus-column-left",    "Col. ←", PandaIcons.chevronLeft,       LocalPandaColors.current.cyan),
+            NiriCmd("focus-column-right",   "Col. →", PandaIcons.chevronRight,      LocalPandaColors.current.cyan),
+            NiriCmd("focus-workspace-up",   "WS ↑",   PandaIcons.keyboardArrowUp,   LocalPandaColors.current.yellow),
+            NiriCmd("focus-workspace-down", "WS ↓",   PandaIcons.keyboardArrowDown, LocalPandaColors.current.yellow),
         )),
         NiriGroup("vistas", listOf(
-            NiriCmd("toggle-overview", "Overview", Icons.Outlined.GridView, PandaCyan),
-            NiriCmd("media-workspace", "Media WS", Icons.Outlined.Tv,       PandaGreen),
+            NiriCmd("toggle-overview", "Overview", PandaIcons.gridView, LocalPandaColors.current.cyan),
+            NiriCmd("media-workspace", "Media WS", PandaIcons.tv,       LocalPandaColors.current.green),
         )),
     )
 
@@ -156,7 +140,7 @@ fun MediaTabScreen(app: PandaApp, onNavigate: (String) -> Unit) {
 
         Spacer(Modifier.height(4.dp))
 
-        PandaCard(title = "COMANDOS :: niri", accent = PandaCyan) {
+        PandaCard(title = "COMANDOS :: niri", accent = LocalPandaColors.current.cyan) {
             Text(
                 "atajos del WM · toca para disparar",
                 style = MaterialTheme.typography.bodySmall,
@@ -169,7 +153,7 @@ fun MediaTabScreen(app: PandaApp, onNavigate: (String) -> Unit) {
                 Text(
                     "monitor objetivo · fija foco y cursor",
                     style = MaterialTheme.typography.labelSmall,
-                    color = PandaCyan,
+                    color = LocalPandaColors.current.cyan,
                 )
                 Spacer(Modifier.height(6.dp))
                 Row(
@@ -210,7 +194,7 @@ fun MediaTabScreen(app: PandaApp, onNavigate: (String) -> Unit) {
                 Text(
                     group.label,
                     style = MaterialTheme.typography.labelSmall,
-                    color = PandaCyan,
+                    color = LocalPandaColors.current.cyan,
                 )
                 Spacer(Modifier.height(6.dp))
                 group.cmds.chunked(3).forEach { row ->
@@ -243,9 +227,9 @@ private fun MediaTile(entry: MediaEntry, modifier: Modifier = Modifier, onClick:
     Column(
         modifier = modifier
             .height(140.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(LocalPandaShapes.current.corner))
             .background(MaterialTheme.colorScheme.surface)
-            .border(1.dp, entry.color.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+            .border(LocalPandaShapes.current.border, entry.color.copy(alpha = 0.5f), RoundedCornerShape(LocalPandaShapes.current.corner))
             .clickable { onClick() }
             .padding(16.dp),
         verticalArrangement = Arrangement.SpaceBetween,
@@ -273,7 +257,7 @@ private fun MonitorPill(
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
-    val accent = PandaCyan
+    val accent = LocalPandaColors.current.cyan
     val alpha = if (enabled) 1f else 0.4f
     Text(
         text = label,
@@ -286,14 +270,14 @@ private fun MonitorPill(
         textAlign = TextAlign.Center,
         maxLines = 1,
         modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(LocalPandaShapes.current.cornerSmall))
             .background(
                 if (selected) accent.copy(alpha = 0.18f * alpha) else Color.Transparent,
             )
             .border(
                 1.dp,
                 accent.copy(alpha = (if (selected) 0.8f else 0.35f) * alpha),
-                RoundedCornerShape(8.dp),
+                RoundedCornerShape(LocalPandaShapes.current.cornerSmall),
             )
             .clickable(enabled = enabled) { onClick() }
             .padding(horizontal = 12.dp, vertical = 7.dp),
@@ -311,9 +295,9 @@ private fun CmdButton(
     Column(
         modifier = modifier
             .height(76.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(LocalPandaShapes.current.corner))
             .background(MaterialTheme.colorScheme.surface)
-            .border(1.dp, cmd.color.copy(alpha = 0.45f * alpha), RoundedCornerShape(10.dp))
+            .border(LocalPandaShapes.current.border, cmd.color.copy(alpha = 0.45f * alpha), RoundedCornerShape(LocalPandaShapes.current.corner))
             .clickable(enabled = enabled) { onClick() }
             .padding(vertical = 8.dp, horizontal = 6.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),

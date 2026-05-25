@@ -1,0 +1,21 @@
+{
+  "name": "Synthwave",
+  "dark": true,
+  "font": "default",
+  "iconStyle": "rounded",
+  "corner": 16,
+  "border": 2,
+  "colors": {
+    "background": "#160E24",
+    "surface": "#211634",
+    "surfaceHigh": "#2D1F47",
+    "onSurface": "#F0E6FF",
+    "onSurfaceMuted": "#9E8ABF",
+    "yellow": "#FFD166",
+    "magenta": "#FF4FD8",
+    "cyan": "#36E2EC",
+    "green": "#5CF2B8",
+    "red": "#FF5C7A",
+    "orange": "#FF8C42"
+  }
+}

@@ -1,4 +1,7 @@
 package io.github.pandaakira.apppanda.ui.files
+import io.github.pandaakira.apppanda.ui.theme.LocalPandaShapes
+import io.github.pandaakira.apppanda.ui.theme.BuiltInPalette
+import io.github.pandaakira.apppanda.ui.theme.LocalPandaColors
 
 import android.content.ContentValues
 import android.content.Context
@@ -57,9 +60,6 @@ import io.github.pandaakira.apppanda.data.models.FilesListResponse
 import io.github.pandaakira.apppanda.ui.components.ErrorCard
 import io.github.pandaakira.apppanda.ui.components.PandaCard
 import io.github.pandaakira.apppanda.ui.components.ScreenHeader
-import io.github.pandaakira.apppanda.ui.theme.PandaCyan
-import io.github.pandaakira.apppanda.ui.theme.PandaGreen
-import io.github.pandaakira.apppanda.ui.theme.PandaYellow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -79,7 +79,7 @@ fun FilesScreen(app: PandaApp) {
     var index by remember { mutableStateOf<FilesIndexResponse?>(null) }
     var indexError by remember { mutableStateOf<String?>(null) }
     var banner by remember { mutableStateOf<String?>(null) }
-    var bannerColor by remember { mutableStateOf(PandaGreen) }
+    var bannerColor by remember { mutableStateOf(BuiltInPalette.green) }
     var working by remember { mutableStateOf(false) }
 
     LaunchedEffect(api) {
@@ -92,7 +92,7 @@ fun FilesScreen(app: PandaApp) {
         }
     }
 
-    fun setBanner(text: String, color: Color = PandaGreen) {
+    fun setBanner(text: String, color: Color = BuiltInPalette.green) {
         banner = text
         bannerColor = color
     }
@@ -126,9 +126,9 @@ fun FilesScreen(app: PandaApp) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(LocalPandaShapes.current.cornerSmall))
                     .background(MaterialTheme.colorScheme.surface)
-                    .border(1.dp, bannerColor, RoundedCornerShape(8.dp))
+                    .border(LocalPandaShapes.current.border, bannerColor, RoundedCornerShape(LocalPandaShapes.current.cornerSmall))
                     .padding(12.dp),
             ) {
                 Text(
@@ -176,6 +176,7 @@ private fun RecibirTab(
     var error by remember { mutableStateOf<String?>(null) }
     var refresh by remember { mutableIntStateOf(0) }
     val errorColor = MaterialTheme.colorScheme.error
+    val okColor = LocalPandaColors.current.green
 
     LaunchedEffect(api, dirIdx, refresh, index?.dirs?.size) {
         val current = api ?: return@LaunchedEffect
@@ -198,7 +199,7 @@ private fun RecibirTab(
                 OutlinedButton(
                     onClick = { dirIdx = d.idx },
                     colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = if (selected) PandaYellow
+                        contentColor = if (selected) LocalPandaColors.current.yellow
                             else MaterialTheme.colorScheme.onSurface,
                     ),
                 ) { Text(d.label.ifBlank { d.path.substringAfterLast('/') }) }
@@ -237,7 +238,7 @@ private fun RecibirTab(
                                 if (ok == null) {
                                     onBanner(
                                         "✓ ${file.name} guardado en Downloads",
-                                        PandaGreen,
+                                        okColor,
                                     )
                                 } else {
                                     onBanner("✗ error: $ok", errorColor)
@@ -264,6 +265,7 @@ private fun EnviarTab(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val errorColor = MaterialTheme.colorScheme.error
+    val okColor = LocalPandaColors.current.green
 
     // OpenDocument (ACTION_OPEN_DOCUMENT) va directo a DocumentsUI/SAF y NO
     // requiere permisos de runtime: devuelve un content:// Uri legible.
@@ -286,7 +288,7 @@ private fun EnviarTab(
             }
             onWorking(false)
             if (res.first) {
-                onBanner("✓ ${res.second}", PandaGreen)
+                onBanner("✓ ${res.second}", okColor)
             } else {
                 onBanner("✗ ${res.second}", errorColor)
             }
@@ -297,7 +299,7 @@ private fun EnviarTab(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        PandaCard(title = "DESTINO", accent = PandaCyan) {
+        PandaCard(title = "DESTINO", accent = LocalPandaColors.current.cyan) {
             Text(
                 index?.uploadTo?.ifBlank { "(sin shared_dir)" } ?: "—",
                 style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
@@ -324,8 +326,8 @@ private fun EnviarTab(
             enabled = !working && api != null,
             modifier = Modifier.fillMaxWidth().height(56.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = PandaGreen.copy(alpha = 0.3f),
-                contentColor = PandaGreen,
+                containerColor = LocalPandaColors.current.green.copy(alpha = 0.3f),
+                contentColor = LocalPandaColors.current.green,
             ),
         ) {
             Text(if (working) "Subiendo…" else "Elegir archivo del celular")
@@ -342,9 +344,9 @@ private fun FileRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(LocalPandaShapes.current.corner))
             .background(MaterialTheme.colorScheme.surface)
-            .border(1.dp, PandaCyan.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+            .border(LocalPandaShapes.current.border, LocalPandaColors.current.cyan.copy(alpha = 0.4f), RoundedCornerShape(LocalPandaShapes.current.corner))
             .clickable(enabled = enabled) { onTap() }
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -361,7 +363,7 @@ private fun FileRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Text("⬇", color = PandaCyan, style = MaterialTheme.typography.titleMedium)
+        Text("⬇", color = LocalPandaColors.current.cyan, style = MaterialTheme.typography.titleMedium)
     }
 }
 

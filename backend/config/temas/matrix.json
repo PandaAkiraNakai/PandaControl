@@ -1,0 +1,21 @@
+{
+  "name": "Matrix",
+  "dark": true,
+  "font": "mono",
+  "iconStyle": "sharp",
+  "corner": 2,
+  "border": 1,
+  "colors": {
+    "background": "#02110A",
+    "surface": "#04200F",
+    "surfaceHigh": "#063017",
+    "onSurface": "#B6FFCB",
+    "onSurfaceMuted": "#5FAE7D",
+    "yellow": "#9EFF6B",
+    "magenta": "#3BE08A",
+    "cyan": "#2BFFB0",
+    "green": "#00FF66",
+    "red": "#FF5555",
+    "orange": "#C8FF4D"
+  }
+}

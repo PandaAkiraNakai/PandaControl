@@ -1,4 +1,5 @@
 package io.github.pandaakira.apppanda.ui.onboarding
+import io.github.pandaakira.apppanda.ui.theme.LocalPandaColors
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -39,8 +40,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.github.pandaakira.apppanda.PandaApp
 import io.github.pandaakira.apppanda.data.PandaApi
-import io.github.pandaakira.apppanda.ui.theme.PandaGreen
-import io.github.pandaakira.apppanda.ui.theme.PandaRed
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -155,8 +154,8 @@ fun OnboardingScreen(app: PandaApp, onSaved: () -> Unit) {
                 it,
                 style = MaterialTheme.typography.bodyMedium,
                 color = when (testOk) {
-                    true -> PandaGreen
-                    false -> PandaRed
+                    true -> LocalPandaColors.current.green
+                    false -> LocalPandaColors.current.red
                     else -> MaterialTheme.colorScheme.onSurface
                 },
             )

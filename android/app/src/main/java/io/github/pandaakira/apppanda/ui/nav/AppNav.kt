@@ -2,11 +2,6 @@ package io.github.pandaakira.apppanda.ui.nav
 
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Analytics
-import androidx.compose.material.icons.outlined.Dashboard
-import androidx.compose.material.icons.outlined.Dns
-import androidx.compose.material.icons.outlined.SettingsRemote
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -41,16 +36,27 @@ import io.github.pandaakira.apppanda.ui.more.VpsScreen
 import io.github.pandaakira.apppanda.ui.onboarding.OnboardingScreen
 import io.github.pandaakira.apppanda.ui.status.MonitorScreen
 import io.github.pandaakira.apppanda.ui.sudo.SudoApprovalOverlay
+import io.github.pandaakira.apppanda.ui.theme.PandaIcons
+import io.github.pandaakira.apppanda.ui.themes.ThemesScreen
 
 private sealed class Dest(
     val route: String,
     val label: String,
-    val icon: ImageVector? = null,
 ) {
-    data object Home : Dest("home", "Inicio", icon = Icons.Outlined.Dashboard)
-    data object Monitor : Dest("monitor", "Monitor", icon = Icons.Outlined.Analytics)
-    data object Control : Dest("control", "Control", icon = Icons.Outlined.SettingsRemote)
-    data object Sistema : Dest("sistema", "Sistema", icon = Icons.Outlined.Dns)
+    data object Home : Dest("home", "Inicio")
+    data object Monitor : Dest("monitor", "Monitor")
+    data object Control : Dest("control", "Control")
+    data object Sistema : Dest("sistema", "Sistema")
+}
+
+/** Icono de cada tab, resuelto en composición para que siga el estilo del
+ *  tema activo (outlined/filled/rounded/sharp). */
+@Composable
+private fun tabIcon(dest: Dest): ImageVector = when (dest) {
+    Dest.Home -> PandaIcons.dashboard
+    Dest.Monitor -> PandaIcons.analytics
+    Dest.Control -> PandaIcons.settingsRemote
+    Dest.Sistema -> PandaIcons.dns
 }
 
 private val tabs = listOf(Dest.Home, Dest.Monitor, Dest.Control, Dest.Sistema)
@@ -67,6 +73,9 @@ fun AppNav(app: PandaApp) {
     }
 
     Scaffold(
+        // Transparente para que el fondo del tema (color o imagen) se vea
+        // detrás del contenido; lo pinta ThemedBackground.
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         bottomBar = {
             val current = navController.currentBackStackEntryAsState().value?.destination
             val isTopLevel = tabs.any { d ->
@@ -88,9 +97,7 @@ fun AppNav(app: PandaApp) {
                                 }
                             },
                             icon = {
-                                dest.icon?.let {
-                                    Icon(it, contentDescription = dest.label)
-                                }
+                                Icon(tabIcon(dest), contentDescription = dest.label)
                             },
                             label = { Text(dest.label, style = MaterialTheme.typography.labelSmall) },
                         )
@@ -132,6 +139,7 @@ fun AppNav(app: PandaApp) {
             composable("updates") { UpdatesScreen(app = app) }
             composable("network") { NetworkScreen(app = app) }
             composable("vps") { VpsScreen(app = app) }
+            composable("temas") { ThemesScreen(app = app) }
             composable("power") { PowerScreen(app = app) }
             composable("settings") {
                 io.github.pandaakira.apppanda.ui.settings.SettingsScreen(app = app)

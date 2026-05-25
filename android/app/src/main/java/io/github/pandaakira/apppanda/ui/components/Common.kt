@@ -1,4 +1,6 @@
 package io.github.pandaakira.apppanda.ui.components
+import io.github.pandaakira.apppanda.ui.theme.LocalPandaShapes
+import io.github.pandaakira.apppanda.ui.theme.LocalPandaColors
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -19,10 +21,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import io.github.pandaakira.apppanda.ui.theme.PandaGreen
-import io.github.pandaakira.apppanda.ui.theme.PandaOrange
-import io.github.pandaakira.apppanda.ui.theme.PandaRed
-import io.github.pandaakira.apppanda.ui.theme.PandaYellow
 
 @Composable
 fun PandaCard(
@@ -34,9 +32,9 @@ fun PandaCard(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(LocalPandaShapes.current.corner))
             .background(MaterialTheme.colorScheme.surface)
-            .border(1.dp, accent.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+            .border(LocalPandaShapes.current.border, accent.copy(alpha = 0.4f), RoundedCornerShape(LocalPandaShapes.current.corner))
             .padding(16.dp),
     ) {
         Text(
@@ -58,10 +56,10 @@ fun StatBar(
 ) {
     val pct = (value / max).coerceIn(0.0, 1.0).toFloat()
     val color = when {
-        pct >= 0.9f -> PandaRed
-        pct >= 0.75f -> PandaOrange
-        pct >= 0.5f -> PandaYellow
-        else -> PandaGreen
+        pct >= 0.9f -> LocalPandaColors.current.red
+        pct >= 0.75f -> LocalPandaColors.current.orange
+        pct >= 0.5f -> LocalPandaColors.current.yellow
+        else -> LocalPandaColors.current.green
     }
     Column(modifier.fillMaxWidth().padding(top = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {

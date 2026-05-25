@@ -1,4 +1,7 @@
 package io.github.pandaakira.apppanda.ui.input
+import io.github.pandaakira.apppanda.ui.theme.LocalPandaShapes
+import io.github.pandaakira.apppanda.ui.theme.PandaIcons
+import io.github.pandaakira.apppanda.ui.theme.LocalPandaColors
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,9 +23,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.KeyboardArrowDown
-import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -53,10 +53,6 @@ import io.github.pandaakira.apppanda.data.MouseDeltaSource
 import io.github.pandaakira.apppanda.data.PandaApi
 import io.github.pandaakira.apppanda.ui.components.PandaCard
 import io.github.pandaakira.apppanda.ui.components.ScreenHeader
-import io.github.pandaakira.apppanda.ui.theme.PandaCyan
-import io.github.pandaakira.apppanda.ui.theme.PandaGreen
-import io.github.pandaakira.apppanda.ui.theme.PandaMagenta
-import io.github.pandaakira.apppanda.ui.theme.PandaYellow
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.CancellationException
@@ -140,15 +136,15 @@ fun InputControlScreen(app: PandaApp) {
         Spacer(Modifier.height(12.dp))
 
         // ─── Touchpad ─────────────────────────────────────────────────────
-        PandaCard(title = "TOUCHPAD", accent = PandaGreen) {
+        PandaCard(title = "TOUCHPAD", accent = LocalPandaColors.current.green) {
             Spacer(Modifier.height(8.dp))
             Box(
                 Modifier
                     .fillMaxWidth()
                     .height(460.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(PandaGreen.copy(alpha = 0.07f))
-                    .border(1.dp, PandaGreen.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(LocalPandaShapes.current.corner))
+                    .background(LocalPandaColors.current.green.copy(alpha = 0.07f))
+                    .border(LocalPandaShapes.current.border, LocalPandaColors.current.green.copy(alpha = 0.4f), RoundedCornerShape(LocalPandaShapes.current.corner))
                     // Gesto EXCLUSIVO: consume cada evento desde el `down`, así
                     // el verticalScroll del Column padre nunca participa y el
                     // movimiento es libre en cualquier dirección. Un dedo: drag
@@ -218,7 +214,7 @@ fun InputControlScreen(app: PandaApp) {
                     "Un dedo: mover · toca para clic\n" +
                         "Dos dedos: scroll · botones: clic medio/derecho",
                     style = MaterialTheme.typography.bodySmall,
-                    color = PandaGreen.copy(alpha = 0.5f),
+                    color = LocalPandaColors.current.green.copy(alpha = 0.5f),
                     textAlign = TextAlign.Center,
                 )
             }
@@ -230,13 +226,13 @@ fun InputControlScreen(app: PandaApp) {
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                ClickBtn("Izq", Modifier.weight(2f), PandaGreen, api != null) {
+                ClickBtn("Izq", Modifier.weight(2f), LocalPandaColors.current.green, api != null) {
                     fire { it.mouseClick("left") }
                 }
-                ClickBtn("Med", Modifier.weight(1f), PandaCyan, api != null) {
+                ClickBtn("Med", Modifier.weight(1f), LocalPandaColors.current.cyan, api != null) {
                     fire { it.mouseClick("middle") }
                 }
-                ClickBtn("Der", Modifier.weight(2f), PandaYellow, api != null) {
+                ClickBtn("Der", Modifier.weight(2f), LocalPandaColors.current.yellow, api != null) {
                     fire { it.mouseClick("right") }
                 }
             }
@@ -262,7 +258,7 @@ fun InputControlScreen(app: PandaApp) {
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
                     shape = CircleShape,
                 ) {
-                    Icon(Icons.Outlined.KeyboardArrowUp, contentDescription = null, tint = PandaGreen)
+                    Icon(PandaIcons.keyboardArrowUp, contentDescription = null, tint = LocalPandaColors.current.green)
                 }
                 Spacer(Modifier.padding(horizontal = 6.dp))
                 OutlinedButton(
@@ -272,7 +268,7 @@ fun InputControlScreen(app: PandaApp) {
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
                     shape = CircleShape,
                 ) {
-                    Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = null, tint = PandaGreen)
+                    Icon(PandaIcons.keyboardArrowDown, contentDescription = null, tint = LocalPandaColors.current.green)
                 }
             }
         }
@@ -280,12 +276,12 @@ fun InputControlScreen(app: PandaApp) {
         Spacer(Modifier.height(12.dp))
 
         // ─── Teclado ──────────────────────────────────────────────────────
-        PandaCard(title = "TECLADO", accent = PandaMagenta) {
+        PandaCard(title = "TECLADO", accent = LocalPandaColors.current.magenta) {
             Spacer(Modifier.height(8.dp))
 
             val enabled = api != null
 
-            Text("Navegación", style = MaterialTheme.typography.labelMedium, color = PandaMagenta)
+            Text("Navegación", style = MaterialTheme.typography.labelMedium, color = LocalPandaColors.current.magenta)
             Spacer(Modifier.height(6.dp))
             KeyRow(enabled,
                 "Esc" to "Escape", "Tab" to "Tab", "Enter" to "Return",
@@ -303,7 +299,7 @@ fun InputControlScreen(app: PandaApp) {
             ) { fire { api -> api.keyPress(it) } }
 
             Spacer(Modifier.height(12.dp))
-            Text("Atajos", style = MaterialTheme.typography.labelMedium, color = PandaMagenta)
+            Text("Atajos", style = MaterialTheme.typography.labelMedium, color = LocalPandaColors.current.magenta)
             Spacer(Modifier.height(6.dp))
 
             KeyRow(enabled,
@@ -320,7 +316,7 @@ fun InputControlScreen(app: PandaApp) {
             Spacer(Modifier.height(12.dp))
 
             // Escribir texto libre
-            Text("Escribir texto", style = MaterialTheme.typography.labelMedium, color = PandaMagenta)
+            Text("Escribir texto", style = MaterialTheme.typography.labelMedium, color = LocalPandaColors.current.magenta)
             Spacer(Modifier.height(6.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
@@ -342,8 +338,8 @@ fun InputControlScreen(app: PandaApp) {
                     enabled = typeText.isNotBlank() && enabled,
                     modifier = Modifier.padding(start = 8.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = PandaMagenta.copy(alpha = 0.3f),
-                        contentColor = PandaMagenta,
+                        containerColor = LocalPandaColors.current.magenta.copy(alpha = 0.3f),
+                        contentColor = LocalPandaColors.current.magenta,
                     ),
                 ) { Text("Escribir") }
             }
@@ -369,7 +365,7 @@ private fun ClickBtn(
             containerColor = color.copy(alpha = 0.2f),
             contentColor = color,
         ),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(LocalPandaShapes.current.cornerSmall),
     ) {
         Text(label, style = MaterialTheme.typography.labelMedium)
     }
@@ -393,7 +389,7 @@ private fun KeyRow(
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(
                     horizontal = 2.dp, vertical = 6.dp,
                 ),
-                shape = RoundedCornerShape(6.dp),
+                shape = RoundedCornerShape(LocalPandaShapes.current.cornerSmall),
             ) {
                 Text(
                     label,

@@ -134,3 +134,49 @@ exclude_appids = [
 enabled = true
 shared_dirs = ["~/Descargas"]
 max_upload_mb = 500
+
+# ─── Temas (módulo Temas) ────────────────────────────────────────────────
+#
+# Carpeta con los temas visuales de la app. Cada archivo *.json define una
+# paleta; la app los lista en /api/v1/themes y los aplica al vuelo. Para
+# agregar un tema basta con dejar un *.json en esta carpeta — no hace falta
+# reiniciar el daemon ni recompilar la app.
+#
+# Un tema es un PAQUETE COMPLETO: cambia colores, fuente, estilo de iconos y
+# formas/bordes. Los colores son obligatorios (hex #RRGGBB o #AARRGGBB; un
+# tema al que le falte alguno se ignora). El resto es opcional y cae al
+# default si falta o es inválido.
+#
+#   {
+#     "name": "Mi tema",
+#     "dark": true,
+#     "font": "mono",          // default | sans | serif | mono
+#     "iconStyle": "outlined", // outlined | filled | rounded | sharp
+#     "corner": 12,            // radio de esquinas en dp (0–48)
+#     "border": 1,             // grosor de borde en dp (0 = sin borde, 0–8)
+#     "backgroundImage": "cyberpunk.jpg", // (opcional) imagen de fondo:
+#                              // nombre de un archivo de imagen que dejes en
+#                              // ESTA misma carpeta. La app la baja vía
+#                              // /api/v1/themes/image y la pinta detrás del
+#                              // contenido con un velo. Si el archivo no
+#                              // existe, se ignora (queda el color de fondo).
+#     "colors": {
+#       "background":     "#0D0D11",
+#       "surface":        "#15151C",
+#       "surfaceHigh":    "#1E1E26",
+#       "onSurface":      "#E0E0E6",
+#       "onSurfaceMuted": "#8A8A99",
+#       "yellow":         "#FFEA00",
+#       "magenta":        "#FF007A",
+#       "cyan":           "#00E5FF",
+#       "green":          "#00FF7F",
+#       "red":            "#FF3860",
+#       "orange":         "#FFA500"
+#     }
+#   }
+#
+# Nota sobre "font": "default" conserva el look mixto (titulares monospace +
+# cuerpo sans del tema incluido); sans/serif/mono aplican esa familia a todo.
+# ~ se expande al home del usuario que corre el daemon.
+[themes]
+dir = "~/.config/apppanda-backend/temas"

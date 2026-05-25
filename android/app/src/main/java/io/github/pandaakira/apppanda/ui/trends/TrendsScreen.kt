@@ -1,4 +1,5 @@
 package io.github.pandaakira.apppanda.ui.trends
+import io.github.pandaakira.apppanda.ui.theme.LocalPandaColors
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -38,12 +39,6 @@ import io.github.pandaakira.apppanda.data.models.MetricRow
 import io.github.pandaakira.apppanda.data.models.MetricsResponse
 import io.github.pandaakira.apppanda.ui.components.EmptyState
 import io.github.pandaakira.apppanda.ui.components.PandaCard
-import io.github.pandaakira.apppanda.ui.theme.PandaCyan
-import io.github.pandaakira.apppanda.ui.theme.PandaGreen
-import io.github.pandaakira.apppanda.ui.theme.PandaMagenta
-import io.github.pandaakira.apppanda.ui.theme.PandaOnSurfaceMuted
-import io.github.pandaakira.apppanda.ui.theme.PandaOrange
-import io.github.pandaakira.apppanda.ui.theme.PandaYellow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -112,28 +107,28 @@ fun TrendsScreen(app: PandaApp) {
             item { EmptyState("Sin datos todavía. El monitor escribe al SQLite cada `monitor.interval_s` (default 60 s).") }
         } else if (rows.isNotEmpty()) {
             item {
-                PandaCard(title = "CPU / RAM / GPU (%)", accent = PandaYellow) {
+                PandaCard(title = "CPU / RAM / GPU (%)", accent = LocalPandaColors.current.yellow) {
                     Spacer(Modifier.height(8.dp))
                     LineChart(
                         rows = rows,
                         series = listOf(
-                            Series("CPU", PandaYellow) { it.cpuPct },
-                            Series("RAM", PandaCyan) { it.ramPct },
-                            Series("GPU", PandaMagenta) { it.gpuPct },
-                            Series("Disco", PandaGreen) { it.diskPct },
+                            Series("CPU", LocalPandaColors.current.yellow) { it.cpuPct },
+                            Series("RAM", LocalPandaColors.current.cyan) { it.ramPct },
+                            Series("GPU", LocalPandaColors.current.magenta) { it.gpuPct },
+                            Series("Disco", LocalPandaColors.current.green) { it.diskPct },
                         ),
                         yMax = 100.0,
                     )
                 }
             }
             item {
-                PandaCard(title = "TEMPS (°C)", accent = PandaOrange) {
+                PandaCard(title = "TEMPS (°C)", accent = LocalPandaColors.current.orange) {
                     Spacer(Modifier.height(8.dp))
                     LineChart(
                         rows = rows,
                         series = listOf(
-                            Series("CPU", PandaYellow) { it.cpuTemp },
-                            Series("GPU", PandaMagenta) { it.gpuTemp },
+                            Series("CPU", LocalPandaColors.current.yellow) { it.cpuTemp },
+                            Series("GPU", LocalPandaColors.current.magenta) { it.gpuTemp },
                         ),
                         yMax = computeMaxTemp(rows),
                     )
@@ -147,6 +142,7 @@ private data class Series(val label: String, val color: Color, val extract: (Met
 
 @Composable
 private fun LineChart(rows: List<MetricRow>, series: List<Series>, yMax: Double) {
+    val gridColor = LocalPandaColors.current.onSurfaceMuted
     Column(Modifier.fillMaxWidth()) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(bottom = 8.dp)) {
             series.forEach { s ->
@@ -175,7 +171,7 @@ private fun LineChart(rows: List<MetricRow>, series: List<Series>, yMax: Double)
             for (i in 0..4) {
                 val y = h * i / 4f
                 drawLine(
-                    PandaOnSurfaceMuted.copy(alpha = 0.2f),
+                    gridColor.copy(alpha = 0.2f),
                     Offset(0f, y), Offset(w, y),
                     strokeWidth = 1f,
                     pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f)),

@@ -46,6 +46,7 @@ PC; si no, no existe para nadie más.
 | **IA** | Chat con [Claude Code](https://claude.com/claude-code) corriendo en tu PC, con sesión persistente y reinyección de contexto al reconectar. |
 | **Sistema** | Apagar / reiniciar / suspender / bloquear (con confirmación), listar y matar procesos, gestionar servicios (start/stop/restart), ver logs de `journalctl`, revisar y aplicar actualizaciones (`checkupdates`), ver vecinos de la LAN y consultar tus VPS por SSH. |
 | **Archivos** | Listar, descargar y subir archivos de los directorios que tú compartas. |
+| **Temas** | Cambiar el look completo de la app: cada tema es un paquete que define **colores, fuente, estilo de iconos, formas/bordes y fondos opcionales** (imágenes de la misma carpeta; si hay varias, eliges con qué wallpaper aplicar el tema). Los temas viven como archivos `*.json` en una carpeta del PC (`[themes].dir`); la app los lista y aplica al vuelo. Para agregar un tema basta dejar un `.json` nuevo — no hay que recompilar. Incluye *Cyberpunk* (default), *Synthwave*, *Matrix*, *Nord* y *Soft* (AMOLED). |
 | **Push del sistema** | Un `ForegroundService` mantiene el SSE vivo en segundo plano y dispara notificaciones nativas ante alertas con histéresis (CPU/RAM/disco/temps/GPU/carga), servicios caídos, sesiones nuevas, boot o salida de suspensión. |
 | **Aprobación de sudo remota** | Cuando tu PC necesita privilegios de root, el celular recibe una notificación urgente (con vibración y tono disparados a mano para sobrevivir al modo silencioso de OEMs como Honor o Xiaomi) y tú apruebas o rechazas desde un modal dentro de la app. |
 
@@ -269,6 +270,11 @@ Las secciones más útiles:
   (`opus` / `sonnet` / `haiku`, o vacío).
 - **`[files]`** — `shared_dirs` define qué carpetas son accesibles desde el
   celular (descarga y subida). Solo se comparte lo que listes explícitamente.
+- **`[themes]`** — `dir` es la carpeta de temas visuales (`*.json`). Cada tema
+  define colores + `font` (default/sans/serif/mono) + `iconStyle`
+  (outlined/filled/rounded/sharp) + `corner` y `border` (dp). La app los lista y
+  aplica al vuelo; agregar un archivo basta, sin recompilar. El instalador
+  siembra ejemplos (Cyberpunk, Synthwave, Matrix, Nord, Soft AMOLED).
 - **`[vps.hosts]`** — alias SSH de VPS para ver su resumen desde la app.
 - **`[smart]`** — discos a chequear con `smartctl`.
 - **`[steam]`** — integración con la biblioteca de Steam y `gamescope`.
@@ -324,6 +330,7 @@ GET  /api/v1/media/players  ·  /media/{player}/status
 GET  /api/v1/net/neighbors
 GET  /api/v1/vps  ·  /vps/{alias}/summary
 GET  /api/v1/games  ·  /apps  ·  /updates
+GET  /api/v1/themes  ·  /themes/image?name=FILE
 GET  /api/v1/browser/tabs  ·  /browser/links?target=ID
 GET  /api/v1/web/search?q=...  ·  /youtube/search?q=...
 GET  /api/v1/events   (SSE: metric_tick / alert / service_failed /

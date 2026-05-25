@@ -1,4 +1,5 @@
 package io.github.pandaakira.apppanda.ui.settings
+import io.github.pandaakira.apppanda.ui.theme.LocalPandaColors
 
 import android.Manifest
 import android.annotation.SuppressLint
@@ -49,11 +50,6 @@ import io.github.pandaakira.apppanda.data.PandaApi
 import io.github.pandaakira.apppanda.service.AlertsService
 import io.github.pandaakira.apppanda.ui.components.PandaCard
 import io.github.pandaakira.apppanda.ui.components.ScreenHeader
-import io.github.pandaakira.apppanda.ui.theme.PandaCyan
-import io.github.pandaakira.apppanda.ui.theme.PandaGreen
-import io.github.pandaakira.apppanda.ui.theme.PandaMagenta
-import io.github.pandaakira.apppanda.ui.theme.PandaRed
-import io.github.pandaakira.apppanda.ui.theme.PandaYellow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -94,7 +90,7 @@ fun SettingsScreen(app: PandaApp) {
         ScreenHeader("SETTINGS", "backend · notificaciones · permisos")
 
         // ─── Backend ─────────────────────────────────────────────────────
-        PandaCard(title = "BACKEND", accent = PandaYellow) {
+        PandaCard(title = "BACKEND", accent = LocalPandaColors.current.yellow) {
             Spacer(Modifier.height(4.dp))
             OutlinedTextField(
                 value = host, onValueChange = { host = it },
@@ -157,8 +153,8 @@ fun SettingsScreen(app: PandaApp) {
                     it,
                     style = MaterialTheme.typography.bodyMedium,
                     color = when (testOk) {
-                        true -> PandaGreen
-                        false -> PandaRed
+                        true -> LocalPandaColors.current.green
+                        false -> LocalPandaColors.current.red
                         else -> MaterialTheme.colorScheme.onSurface
                     },
                 )
@@ -175,7 +171,7 @@ fun SettingsScreen(app: PandaApp) {
         PermissionsCard()
 
         // ─── Acerca de ───────────────────────────────────────────────────
-        PandaCard(title = "ABOUT", accent = PandaMagenta) {
+        PandaCard(title = "ABOUT", accent = LocalPandaColors.current.magenta) {
             Text(
                 "Panda Control · panel para sergiotorre desde el celular.",
                 style = MaterialTheme.typography.bodyMedium,
@@ -209,7 +205,7 @@ private fun PushNotificationsCard(app: PandaApp) {
         }
     }
 
-    PandaCard(title = "NOTIFICACIONES PUSH", accent = PandaCyan) {
+    PandaCard(title = "NOTIFICACIONES PUSH", accent = LocalPandaColors.current.cyan) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                 Text(
@@ -257,7 +253,7 @@ private fun NotificationFilterCard(app: PandaApp) {
     val pushEnabled by app.settings.pushEnabled.collectAsState(initial = false)
     val scope = rememberCoroutineScope()
 
-    PandaCard(title = "QUÉ NOTIFICAR", accent = PandaCyan) {
+    PandaCard(title = "QUÉ NOTIFICAR", accent = LocalPandaColors.current.cyan) {
         Text(
             "Elegí qué eventos disparan notificación. Las solicitudes sudo siempre llegan.",
             style = MaterialTheme.typography.bodySmall,
@@ -268,7 +264,7 @@ private fun NotificationFilterCard(app: PandaApp) {
             Text(
                 "Activá las notificaciones push de arriba para que esto tenga efecto.",
                 style = MaterialTheme.typography.labelSmall,
-                color = PandaYellow,
+                color = LocalPandaColors.current.yellow,
             )
         }
         NotifGroup.entries.forEach { group ->
@@ -276,7 +272,7 @@ private fun NotificationFilterCard(app: PandaApp) {
             Text(
                 group.label.uppercase(),
                 style = MaterialTheme.typography.labelSmall,
-                color = PandaCyan,
+                color = LocalPandaColors.current.cyan,
             )
             Spacer(Modifier.height(2.dp))
             NotifCategory.entries.filter { it.group == group }.forEach { cat ->
@@ -327,7 +323,7 @@ private fun PermissionsCard() {
         mutableStateOf(pm?.isIgnoringBatteryOptimizations(context.packageName) == true)
     }
 
-    PandaCard(title = "PERMISOS", accent = PandaYellow) {
+    PandaCard(title = "PERMISOS", accent = LocalPandaColors.current.yellow) {
         PermissionRow(
             label = "Mostrar notificaciones",
             granted = notifGranted,
@@ -389,7 +385,7 @@ private fun PermissionRow(label: String, granted: Boolean, onRequest: () -> Unit
             modifier = Modifier.weight(1f))
         if (granted) {
             Text("✓ permitido",
-                style = MaterialTheme.typography.bodyMedium, color = PandaGreen)
+                style = MaterialTheme.typography.bodyMedium, color = LocalPandaColors.current.green)
         } else {
             OutlinedButton(onClick = onRequest) { Text("Pedir") }
         }

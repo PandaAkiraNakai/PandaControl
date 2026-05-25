@@ -31,6 +31,8 @@ públicos.
 | `GET /api/v1/games` | biblioteca Steam |
 | `GET /api/v1/apps` | config de [apps.*] |
 | `GET /api/v1/updates` | checkupdates parsed |
+| `GET /api/v1/themes` | temas visuales (`*.json` de `[themes].dir`) |
+| `GET /api/v1/themes/image?name=...` | imagen de fondo de un tema (archivo de la carpeta) |
 | `GET /api/v1/browser/tabs` | pestañas abiertas de Brave (CDP) |
 | `GET /api/v1/browser/links?target=ID` | elementos clicables de la página + etiqueta |
 | `GET /api/v1/web/search?q=...` | búsqueda web (DuckDuckGo HTML) |

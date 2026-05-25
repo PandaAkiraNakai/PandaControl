@@ -386,6 +386,11 @@ class _Handler(BaseHTTPRequestHandler):
             body = self._apps()
         elif path == "/api/v1/updates":
             body = self._updates()
+        elif path == "/api/v1/themes":
+            body = self._themes()
+        elif path == "/api/v1/themes/image":
+            self._themes_image()
+            return
         elif path == "/api/v1/files":
             body = self._files_list()
         elif path == "/api/v1/files/download":
@@ -930,6 +935,148 @@ class _Handler(BaseHTTPRequestHandler):
                     "name": parts[0], "from": parts[1], "to": parts[3],
                 })
         return {"count": len(pkgs), "packages": pkgs, "raw": out[:4000]}
+
+    # ─── Themes (módulo Temas) ───────────────────────────────────────────
+    #
+    # Cada *.json del dir de temas define una paleta. Se ignora cualquier
+    # archivo que no parsee o al que le falte algún color — así un tema a
+    # medias nunca rompe la lista. La app aplica el seleccionado al vuelo.
+
+    _HEX_RE = re.compile(r"^#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
+    _THEME_KEYS = (
+        "background", "surface", "surfaceHigh", "onSurface", "onSurfaceMuted",
+        "yellow", "magenta", "cyan", "green", "red", "orange",
+    )
+
+    def _themes_dir(self) -> Path:
+        cfg = self.api.ctx.cfg.get("themes", {})
+        raw_dir = cfg.get("dir", "~/.config/apppanda-backend/temas")
+        return Path(os.path.expanduser(str(raw_dir)))
+
+    def _themes(self) -> dict:
+        base = self._themes_dir()
+        themes = []
+        if base.is_dir():
+            for entry in sorted(base.glob("*.json"), key=lambda e: e.name.lower()):
+                if entry.name.startswith("."):
+                    continue
+                try:
+                    with entry.open("rb") as f:
+                        raw = json.load(f)
+                except (OSError, ValueError):
+                    continue
+                theme = self._parse_theme(entry.stem, raw, base)
+                if theme is not None:
+                    themes.append(theme)
+        return {"dir": str(base), "themes": themes}
+
+    _FONTS = ("default", "sans", "serif", "mono")
+    _ICON_STYLES = ("outlined", "filled", "rounded", "sharp")
+
+    @staticmethod
+    def _clamp_int(v, default: int, lo: int, hi: int) -> int:
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            return default
+        return max(lo, min(hi, n))
+
+    def _parse_theme(self, theme_id: str, raw, base: Path) -> dict | None:
+        if not isinstance(raw, dict):
+            return None
+        colors_in = raw.get("colors")
+        if not isinstance(colors_in, dict):
+            return None
+        colors = {}
+        for k in self._THEME_KEYS:
+            v = colors_in.get(k)
+            if not isinstance(v, str) or not self._HEX_RE.match(v.strip()):
+                return None  # tema incompleto/inválido → se ignora
+            colors[k] = v.strip().upper()
+        name = raw.get("name")
+        if not isinstance(name, str) or not name.strip():
+            name = theme_id
+        # Campos de "paquete" — fuente, iconos y formas. Valores fuera de
+        # rango caen al default en vez de invalidar el tema entero.
+        font = raw.get("font", "default")
+        if font not in self._FONTS:
+            font = "default"
+        icon_style = raw.get("iconStyle", "outlined")
+        if icon_style not in self._ICON_STYLES:
+            icon_style = "outlined"
+        # Imágenes de fondo opcionales: nombres de archivos en la carpeta de
+        # temas. Acepta "backgroundImage" (uno) y/o "backgroundImages" (lista,
+        # para elegir entre varios). Solo se reportan los que existan y tengan
+        # filename seguro. La app las baja vía /api/v1/themes/image.
+        candidates = []
+        bg_list = raw.get("backgroundImages")
+        if isinstance(bg_list, list):
+            candidates.extend(x for x in bg_list if isinstance(x, str))
+        bg_one = raw.get("backgroundImage", raw.get("background_image"))
+        if isinstance(bg_one, str):
+            candidates.append(bg_one)
+        images = []
+        for c in candidates:
+            safe = self._safe_filename(c.strip()) if c.strip() else None
+            if safe and (base / safe).is_file() and safe not in images:
+                images.append(safe)
+        return {
+            "id": theme_id,
+            "name": name.strip(),
+            "dark": bool(raw.get("dark", True)),
+            "font": font,
+            "iconStyle": icon_style,
+            "corner": self._clamp_int(raw.get("corner", 12), 12, 0, 48),
+            "border": self._clamp_int(raw.get("border", 1), 1, 0, 8),
+            "backgroundImage": images[0] if images else "",
+            "backgroundImages": images,
+            "colors": colors,
+        }
+
+    def _themes_image(self) -> None:
+        """Sirve una imagen de fondo de tema desde la carpeta de temas.
+        Mismas defensas que el download de archivos (filename seguro +
+        realpath dentro de la carpeta), y solo mime image/*."""
+        base = self._themes_dir()
+        q = self._parse_qs()
+        name = self._safe_filename(q.get("name", ""))
+        if name is None or not base.is_dir():
+            self._err(400, "name inválido")
+            self._audit("/api/v1/themes/image", 400)
+            return
+        path = base / name
+        if not path.is_file():
+            self._err(404, "no existe")
+            self._audit("/api/v1/themes/image", 404)
+            return
+        try:
+            real = path.resolve(strict=True)
+            real.relative_to(base.resolve())
+        except (ValueError, OSError):
+            self._err(403, "fuera de la carpeta de temas")
+            self._audit("/api/v1/themes/image", 403)
+            return
+        ctype, _ = mimetypes.guess_type(name)
+        if not ctype or not ctype.startswith("image/"):
+            self._err(415, "no es imagen")
+            self._audit("/api/v1/themes/image", 415)
+            return
+        size = path.stat().st_size
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(size))
+        self.send_header("Cache-Control", "max-age=86400")
+        self.end_headers()
+        try:
+            with path.open("rb") as fp:
+                while True:
+                    chunk = fp.read(64 * 1024)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        self._audit("/api/v1/themes/image", 200)
 
     # ─── Files (módulo Archivos) ─────────────────────────────────────────
 

@@ -1,4 +1,5 @@
 package io.github.pandaakira.apppanda.ui.more
+import io.github.pandaakira.apppanda.ui.theme.LocalPandaColors
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -25,10 +26,6 @@ import io.github.pandaakira.apppanda.ui.components.ActionResultBanner
 import io.github.pandaakira.apppanda.ui.components.ConfirmDialog
 import io.github.pandaakira.apppanda.ui.components.ScreenHeader
 import io.github.pandaakira.apppanda.ui.components.rememberActionExecutor
-import io.github.pandaakira.apppanda.ui.theme.PandaCyan
-import io.github.pandaakira.apppanda.ui.theme.PandaOrange
-import io.github.pandaakira.apppanda.ui.theme.PandaRed
-import io.github.pandaakira.apppanda.ui.theme.PandaYellow
 
 private data class PowerOption(
     val action: String,
@@ -44,13 +41,13 @@ fun PowerScreen(app: PandaApp) {
     var pending by remember { mutableStateOf<PowerOption?>(null) }
 
     val options = listOf(
-        PowerOption("off", "Apagar", PandaRed,
+        PowerOption("off", "Apagar", LocalPandaColors.current.red,
             "Esto va a apagar la torre. ¿Estás seguro?"),
-        PowerOption("reboot", "Reiniciar", PandaOrange,
+        PowerOption("reboot", "Reiniciar", LocalPandaColors.current.orange,
             "Esto va a reiniciar la torre."),
-        PowerOption("suspend", "Suspender", PandaYellow,
+        PowerOption("suspend", "Suspender", LocalPandaColors.current.yellow,
             "Suspender la torre (S3)."),
-        PowerOption("lock", "Bloquear", PandaCyan,
+        PowerOption("lock", "Bloquear", LocalPandaColors.current.cyan,
             "Bloquear la sesión gráfica."),
     )
 

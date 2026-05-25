@@ -1,0 +1,22 @@
+{
+  "name": "Cyberpunk",
+  "dark": true,
+  "font": "default",
+  "iconStyle": "outlined",
+  "corner": 12,
+  "border": 1,
+  "backgroundImages": ["cyberpunk.jpg", "cyberpunk2.jpg"],
+  "colors": {
+    "background": "#0D0D11",
+    "surface": "#15151C",
+    "surfaceHigh": "#1E1E26",
+    "onSurface": "#E0E0E6",
+    "onSurfaceMuted": "#8A8A99",
+    "yellow": "#FFEA00",
+    "magenta": "#FF007A",
+    "cyan": "#00E5FF",
+    "green": "#00FF7F",
+    "red": "#FF3860",
+    "orange": "#FFA500"
+  }
+}

@@ -1,4 +1,7 @@
 package io.github.pandaakira.apppanda.ui.more
+import io.github.pandaakira.apppanda.ui.theme.LocalPandaShapes
+import io.github.pandaakira.apppanda.ui.theme.PandaIcons
+import io.github.pandaakira.apppanda.ui.theme.LocalPandaColors
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,14 +25,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.Cloud
-import androidx.compose.material.icons.outlined.PowerSettingsNew
-import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.SystemUpdate
-import androidx.compose.material.icons.outlined.Tune
-import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -59,11 +54,6 @@ import io.github.pandaakira.apppanda.ui.components.PandaCard
 import io.github.pandaakira.apppanda.ui.components.RemoteScreen
 import io.github.pandaakira.apppanda.ui.components.ScreenHeader
 import io.github.pandaakira.apppanda.ui.components.StatBar
-import io.github.pandaakira.apppanda.ui.theme.PandaCyan
-import io.github.pandaakira.apppanda.ui.theme.PandaGreen
-import io.github.pandaakira.apppanda.ui.theme.PandaMagenta
-import io.github.pandaakira.apppanda.ui.theme.PandaOrange
-import io.github.pandaakira.apppanda.ui.theme.PandaYellow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -80,13 +70,14 @@ private data class ModuleEntry(
 @Composable
 fun ModulesScreen(onNavigate: (String) -> Unit) {
     val modules = listOf(
-        ModuleEntry("services", "Servicios", Icons.Outlined.Tune, PandaCyan),
-        ModuleEntry("updates", "Actualizar", Icons.Outlined.SystemUpdate, PandaGreen),
-        ModuleEntry("power", "Energía", Icons.Outlined.PowerSettingsNew,
+        ModuleEntry("services", "Servicios", PandaIcons.tune, LocalPandaColors.current.cyan),
+        ModuleEntry("updates", "Actualizar", PandaIcons.systemUpdate, LocalPandaColors.current.green),
+        ModuleEntry("power", "Energía", PandaIcons.powerSettingsNew,
             MaterialTheme.colorScheme.error),
-        ModuleEntry("files", "Archivos", Icons.Outlined.Folder, PandaGreen),
-        ModuleEntry("network", "Red LAN", Icons.Outlined.Wifi, PandaGreen),
-        ModuleEntry("vps", "VPS", Icons.Outlined.Cloud, PandaYellow),
+        ModuleEntry("files", "Archivos", PandaIcons.folder, LocalPandaColors.current.green),
+        ModuleEntry("network", "Red LAN", PandaIcons.wifi, LocalPandaColors.current.green),
+        ModuleEntry("vps", "VPS", PandaIcons.cloud, LocalPandaColors.current.yellow),
+        ModuleEntry("temas", "Temas", PandaIcons.palette, LocalPandaColors.current.magenta),
     )
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
@@ -96,9 +87,9 @@ fun ModulesScreen(onNavigate: (String) -> Unit) {
             }
             IconButton(onClick = { onNavigate("settings") }) {
                 Icon(
-                    Icons.Outlined.Settings,
+                    PandaIcons.settings,
                     contentDescription = "Ajustes",
-                    tint = PandaCyan,
+                    tint = LocalPandaColors.current.cyan,
                 )
             }
         }
@@ -121,9 +112,9 @@ private fun ModuleCard(entry: ModuleEntry, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .height(110.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(LocalPandaShapes.current.corner))
             .background(MaterialTheme.colorScheme.surface)
-            .border(1.dp, entry.color.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+            .border(LocalPandaShapes.current.border, entry.color.copy(alpha = 0.5f), RoundedCornerShape(LocalPandaShapes.current.corner))
             .clickable { onClick() }
             .padding(16.dp),
         verticalArrangement = Arrangement.SpaceBetween,
@@ -192,7 +183,7 @@ fun ProcessesScreen(app: PandaApp) {
         error?.let { item { ErrorCard(it) } }
         data?.let { d ->
             item {
-                PandaCard(title = "TOP ${d.sort.uppercase()}", accent = PandaYellow) {
+                PandaCard(title = "TOP ${d.sort.uppercase()}", accent = LocalPandaColors.current.yellow) {
                     MonoRow("PID", "USER", "%CPU", "%RAM", "COMM",
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     d.rows.forEach { r ->
@@ -322,12 +313,12 @@ fun ServicesListScreen(app: PandaApp) {
                 }
             }
             item {
-                PandaCard(title = "WATCH :: ${d.watch.size}", accent = PandaCyan) {
+                PandaCard(title = "WATCH :: ${d.watch.size}", accent = LocalPandaColors.current.cyan) {
                     d.watch.forEach { row ->
                         val isActive = row.state == "active"
                         KeyValueColored(
                             row.unit, row.state,
-                            valueColor = if (isActive) PandaGreen
+                            valueColor = if (isActive) LocalPandaColors.current.green
                                          else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -336,7 +327,7 @@ fun ServicesListScreen(app: PandaApp) {
             if (d.manageable.isNotEmpty()) {
                 items(d.manageable.size) { i ->
                     val unit = d.manageable[i]
-                    PandaCard(title = unit, accent = PandaYellow) {
+                    PandaCard(title = unit, accent = LocalPandaColors.current.yellow) {
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier.padding(top = 8.dp),
@@ -421,7 +412,7 @@ fun LogsScreen(app: PandaApp) {
             }
         }
         item {
-            PandaCard(title = data.priority.uppercase(), accent = PandaMagenta) {
+            PandaCard(title = data.priority.uppercase(), accent = LocalPandaColors.current.magenta) {
                 Text(
                     data.output.ifBlank { "(sin entradas)" },
                     style = MaterialTheme.typography.bodySmall.copy(
@@ -470,12 +461,12 @@ fun UpdatesScreen(app: PandaApp) {
             item {
                 PandaCard(
                     title = "PENDING :: ${d.count}",
-                    accent = if (d.count == 0) PandaGreen else PandaOrange,
+                    accent = if (d.count == 0) LocalPandaColors.current.green else LocalPandaColors.current.orange,
                 ) {
                     if (d.count == 0) {
                         Text("Sistema al día.",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = PandaGreen)
+                            color = LocalPandaColors.current.green)
                     } else {
                         d.packages.forEach { pkg ->
                             Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
@@ -558,12 +549,12 @@ fun DisplaysScreen(app: PandaApp) {
         data?.outputs?.let { outs ->
             items(outs.size) { i ->
                 val o = outs[i]
-                val accent = if (o.on) PandaGreen else MaterialTheme.colorScheme.onSurfaceVariant
+                val accent = if (o.on) LocalPandaColors.current.green else MaterialTheme.colorScheme.onSurfaceVariant
                 Column(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(LocalPandaShapes.current.corner))
                         .background(MaterialTheme.colorScheme.surface)
-                        .border(1.dp, accent.copy(alpha = 0.5f),
-                            RoundedCornerShape(12.dp))
+                        .border(LocalPandaShapes.current.border, accent.copy(alpha = 0.5f),
+                            RoundedCornerShape(LocalPandaShapes.current.corner))
                         .clickable(enabled = !exec.busy) {
                             exec.run("${o.name} → ${if (o.on) "OFF" else "ON"}") {
                                 it.setScreen(o.name, !o.on)
@@ -585,7 +576,7 @@ fun DisplaysScreen(app: PandaApp) {
             }
         }
         item {
-            PandaCard(title = "DPMS :: global", accent = PandaYellow) {
+            PandaCard(title = "DPMS :: global", accent = LocalPandaColors.current.yellow) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.padding(top = 8.dp)) {
                     androidx.compose.material3.Button(
@@ -668,9 +659,9 @@ fun MediaScreen(app: PandaApp) {
                 val p = players[i]
                 val s = statuses[p] ?: MediaStatus()
                 val accent = when (s.status) {
-                    "Playing" -> PandaGreen
-                    "Paused" -> PandaYellow
-                    else -> PandaCyan
+                    "Playing" -> LocalPandaColors.current.green
+                    "Paused" -> LocalPandaColors.current.yellow
+                    else -> LocalPandaColors.current.cyan
                 }
                 PandaCard(title = "${p.take(28)} · ${s.status}", accent = accent) {
                     if (s.title.isNotBlank()) {
@@ -747,12 +738,12 @@ fun MediaScreen(app: PandaApp) {
                 items(sinks.size) { i ->
                     val sink = sinks[i]
                     val isDefault = sink.name == audio?.default
-                    val accent = if (isDefault) PandaGreen else PandaCyan
+                    val accent = if (isDefault) LocalPandaColors.current.green else LocalPandaColors.current.cyan
                     Column(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(LocalPandaShapes.current.corner))
                             .background(MaterialTheme.colorScheme.surface)
-                            .border(1.dp, accent.copy(alpha = 0.4f),
-                                RoundedCornerShape(12.dp))
+                            .border(LocalPandaShapes.current.border, accent.copy(alpha = 0.4f),
+                                RoundedCornerShape(LocalPandaShapes.current.corner))
                             .clickable(enabled = !isDefault && !exec.busy) {
                                 exec.run("Audio → ${sink.label.take(20)}") {
                                     it.setAudioSink(sink.name)
@@ -774,7 +765,7 @@ fun MediaScreen(app: PandaApp) {
                         if (isDefault) {
                             Text("// DEFAULT",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = PandaGreen,
+                                color = LocalPandaColors.current.green,
                                 modifier = Modifier.padding(top = 4.dp))
                         }
                     }
@@ -795,7 +786,7 @@ fun NetworkScreen(app: PandaApp) = RemoteScreen(
     fetch = { it.netNeighbors() },
 ) { data ->
     item {
-        PandaCard(title = "GATEWAY", accent = PandaYellow) {
+        PandaCard(title = "GATEWAY", accent = LocalPandaColors.current.yellow) {
             Text(
                 data.gateway.ifBlank { "(no detectado)" },
                 style = MaterialTheme.typography.titleMedium.copy(
@@ -805,7 +796,7 @@ fun NetworkScreen(app: PandaApp) = RemoteScreen(
         }
     }
     item {
-        PandaCard(title = "NEIGHBORS :: ${data.neighbors.size}", accent = PandaCyan) {
+        PandaCard(title = "NEIGHBORS :: ${data.neighbors.size}", accent = LocalPandaColors.current.cyan) {
             data.neighbors.forEach { n ->
                 Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
                     val mono = MaterialTheme.typography.bodySmall.copy(
@@ -818,8 +809,8 @@ fun NetworkScreen(app: PandaApp) = RemoteScreen(
                         n.state,
                         style = mono,
                         color = when (n.state) {
-                            "REACHABLE" -> PandaGreen
-                            "STALE" -> PandaYellow
+                            "REACHABLE" -> LocalPandaColors.current.green
+                            "STALE" -> LocalPandaColors.current.yellow
                             else -> MaterialTheme.colorScheme.onSurfaceVariant
                         },
                     )
@@ -905,7 +896,7 @@ fun VpsScreen(app: PandaApp) {
                 }
                 selected?.let { alias ->
                     item {
-                        PandaCard(title = "SSH :: $alias", accent = PandaCyan) {
+                        PandaCard(title = "SSH :: $alias", accent = LocalPandaColors.current.cyan) {
                             if (loadingSummary) {
                                 Text("Cargando…",
                                     style = MaterialTheme.typography.bodyMedium,
@@ -989,9 +980,9 @@ private fun GameTile(
         modifier = Modifier
             .fillMaxWidth()
             .height(110.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(LocalPandaShapes.current.corner))
             .background(MaterialTheme.colorScheme.surface)
-            .border(1.dp, PandaMagenta.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+            .border(LocalPandaShapes.current.border, LocalPandaColors.current.magenta.copy(alpha = 0.5f), RoundedCornerShape(LocalPandaShapes.current.corner))
             .clickable(enabled = enabled) { onClick() }
             .padding(12.dp),
         verticalArrangement = Arrangement.SpaceBetween,
@@ -999,7 +990,7 @@ private fun GameTile(
         Text(
             "// ${g.appid}",
             style = MaterialTheme.typography.labelSmall,
-            color = PandaMagenta,
+            color = LocalPandaColors.current.magenta,
         )
         Text(
             g.name,
@@ -1083,9 +1074,9 @@ private fun AppTile(
         modifier = Modifier
             .fillMaxWidth()
             .height(110.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(LocalPandaShapes.current.corner))
             .background(MaterialTheme.colorScheme.surface)
-            .border(1.dp, PandaCyan.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+            .border(LocalPandaShapes.current.border, LocalPandaColors.current.cyan.copy(alpha = 0.5f), RoundedCornerShape(LocalPandaShapes.current.corner))
             .clickable(enabled = enabled) { onClick() }
             .padding(12.dp),
         verticalArrangement = Arrangement.SpaceBetween,
