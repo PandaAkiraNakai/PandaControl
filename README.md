@@ -52,6 +52,10 @@ PC; si no, no existe para nadie más.
 
 ## Capturas
 
+> Los wallpapers que se ven de fondo **no están incluidos en el repo** por
+> derechos de autor; aparecen solo a modo de demostración. La app trae los
+> temas (colores, fuentes, formas), pero tú pones tus propias imágenes de fondo.
+
 <table>
   <tr>
     <td align="center" width="33%">
