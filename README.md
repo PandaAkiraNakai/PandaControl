@@ -50,6 +50,36 @@ PC; si no, no existe para nadie más.
 | **Push del sistema** | Un `ForegroundService` mantiene el SSE vivo en segundo plano y dispara notificaciones nativas ante alertas con histéresis (CPU/RAM/disco/temps/GPU/carga), servicios caídos, sesiones nuevas, boot o salida de suspensión. |
 | **Aprobación de sudo remota** | Cuando tu PC necesita privilegios de root, el celular recibe una notificación urgente (con vibración y tono disparados a mano para sobrevivir al modo silencioso de OEMs como Honor o Xiaomi) y tú apruebas o rechazas desde un modal dentro de la app. |
 
+## Capturas
+
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <img src="screenshots/sistema-cyberpunk.jpg" alt="Pantalla Sistema con el tema Cyberpunk y wallpaper" width="240"><br>
+      <sub>Sistema · tema Cyberpunk con fondo</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="screenshots/sistema-oscuro.jpg" alt="Pantalla Sistema en tema oscuro" width="240"><br>
+      <sub>Sistema · tema sobrio sin fondo</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="screenshots/temas.jpg" alt="Selector de temas" width="240"><br>
+      <sub>Temas · cambia el look al vuelo</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="33%">
+      <img src="screenshots/control.jpg" alt="Módulo Control: touchpad y teclado remotos" width="240"><br>
+      <sub>Control · touchpad + teclado remotos</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="screenshots/notificaciones.jpg" alt="Ajustes de qué eventos disparan notificación" width="240"><br>
+      <sub>Notificaciones · qué eventos te avisan</sub>
+    </td>
+    <td width="33%"></td>
+  </tr>
+</table>
+
 ## Requisitos previos
 
 **En el PC (para el backend):**
