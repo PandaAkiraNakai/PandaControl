@@ -6,6 +6,10 @@ import io.github.pandaakira.apppanda.ui.themes.ThemedBackground
 
 import android.app.NotificationManager
 import android.content.Context
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -59,6 +63,9 @@ fun SudoApprovalOverlay(app: PandaApp, theme: PandaTheme) {
     val req = pending ?: return
 
     val context = LocalContext.current
+    // La aprobación exige confirmar identidad con BiometricPrompt, que necesita
+    // una FragmentActivity. MainActivity lo es.
+    val activity = context as? FragmentActivity
     val api by app.repository.api.collectAsState()
     val scope = rememberCoroutineScope()
 
@@ -71,6 +78,9 @@ fun SudoApprovalOverlay(app: PandaApp, theme: PandaTheme) {
     }
     var busy by remember(req.rid) { mutableStateOf(false) }
     var result by remember(req.rid) { mutableStateOf<String?>(null) }
+    // Mientras el sheet biométrico está arriba: bloquea los botones para no
+    // lanzar varios prompts. No usa `busy` (ese marca el envío de la decisión).
+    var authing by remember(req.rid) { mutableStateOf(false) }
 
     LaunchedEffect(req.rid) {
         while (remaining > 0 && !busy && result == null) {
@@ -195,12 +205,28 @@ fun SudoApprovalOverlay(app: PandaApp, theme: PandaTheme) {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         OutlinedButton(
                             onClick = { decide(false) },
-                            enabled = !busy,
+                            enabled = !busy && !authing,
                             modifier = Modifier.weight(1f).height(60.dp),
                         ) { Text("Rechazar") }
                         Button(
-                            onClick = { decide(true) },
-                            enabled = !busy,
+                            onClick = {
+                                // Aprobar exige biometría/credencial. Solo al
+                                // confirmar identidad se envía la decisión.
+                                if (busy || authing) return@Button
+                                val act = activity
+                                if (act == null) {
+                                    decide(true)
+                                } else {
+                                    authing = true
+                                    promptSudoBiometric(
+                                        activity = act,
+                                        command = req.command,
+                                        onApproved = { authing = false; decide(true) },
+                                        onDenied = { authing = false },
+                                    )
+                                }
+                            },
+                            enabled = !busy && !authing,
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = LocalPandaColors.current.green.copy(alpha = 0.3f),
                                 contentColor = LocalPandaColors.current.green,
@@ -219,4 +245,53 @@ private fun cancelSudoNotif(context: Context, rid: String) {
     val notifId = AlertsService.SUDO_NOTIF_BASE + (rid.hashCode() and 0x7fff)
     (context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager)
         ?.cancel(notifId)
+}
+
+/**
+ * Pide confirmar identidad (huella o, como respaldo, PIN/patrón del
+ * dispositivo) antes de aprobar una elevación de privilegios. `onApproved`
+ * solo se invoca si la autenticación tuvo éxito; cualquier cancelación o error
+ * llama a `onDenied` sin aprobar.
+ *
+ * Si el dispositivo no tiene ningún método de bloqueo configurado, no podemos
+ * exigir biometría — aprobamos directo para no dejar al dueño fuera de su
+ * propia torre (el factor de seguridad real es ya tener la app y el token).
+ */
+private fun promptSudoBiometric(
+    activity: FragmentActivity,
+    command: String,
+    onApproved: () -> Unit,
+    onDenied: () -> Unit,
+) {
+    val allowed = BiometricManager.Authenticators.BIOMETRIC_STRONG or
+        BiometricManager.Authenticators.DEVICE_CREDENTIAL
+    if (BiometricManager.from(activity).canAuthenticate(allowed) !=
+        BiometricManager.BIOMETRIC_SUCCESS
+    ) {
+        onApproved()
+        return
+    }
+    val prompt = BiometricPrompt(
+        activity,
+        ContextCompat.getMainExecutor(activity),
+        object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(
+                result: BiometricPrompt.AuthenticationResult,
+            ) = onApproved()
+
+            override fun onAuthenticationError(
+                errorCode: Int,
+                errString: CharSequence,
+            ) = onDenied()
+        },
+    )
+    val info = BiometricPrompt.PromptInfo.Builder()
+        .setTitle("Aprobar sudo")
+        .setSubtitle(
+            if (command.isNotBlank()) command.take(80)
+            else "Elevación de privilegios en la torre",
+        )
+        .setAllowedAuthenticators(allowed)
+        .build()
+    prompt.authenticate(info)
 }

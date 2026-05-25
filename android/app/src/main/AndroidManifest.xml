@@ -12,6 +12,8 @@
     <uses-permission android:name="android.permission.TURN_SCREEN_ON" />
     <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Aprobación de sudo protegida con huella / credencial del dispositivo. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
     <!-- Módulo Archivos: lectura del contenido elegido en el selector y
          escritura a Downloads/. Android 13+ usa READ_MEDIA_*, < 13 usa

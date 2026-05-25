@@ -21,8 +21,8 @@ android {
         applicationId = "io.github.pandaakira.apppanda"
         minSdk = 26
         targetSdk = 35
-        versionCode = 42
-        versionName = "2.6.0"
+        versionCode = 43
+        versionName = "2.6.1"
     }
 
     signingConfigs {
@@ -82,6 +82,7 @@ dependencies {
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.datastore.preferences)
+    implementation(libs.androidx.biometric)
 
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.cio)

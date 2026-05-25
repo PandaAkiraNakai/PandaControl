@@ -2,9 +2,9 @@ package io.github.pandaakira.apppanda
 
 import android.os.Build
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.fragment.app.FragmentActivity
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -16,7 +16,7 @@ import io.github.pandaakira.apppanda.ui.theme.toPandaTheme
 import io.github.pandaakira.apppanda.ui.themes.ThemedBackground
 import kotlinx.serialization.json.Json
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     private val themeJson = Json { ignoreUnknownKeys = true }
 
     override fun onCreate(savedInstanceState: Bundle?) {
