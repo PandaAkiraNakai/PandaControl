@@ -8,8 +8,8 @@
   "backgroundImages": ["cyberpunk.jpg", "cyberpunk2.jpg"],
   "colors": {
     "background": "#07070B",
-    "surface": "#101017",
-    "surfaceHigh": "#1A1A24",
+    "surface": "#D9101017",
+    "surfaceHigh": "#D91A1A24",
     "onSurface": "#EAFBFF",
     "onSurfaceMuted": "#7E8794",
     "yellow": "#FFE600",

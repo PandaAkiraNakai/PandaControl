@@ -8,8 +8,8 @@
   "backgroundImage": "nord-wallpaper.jpg",
   "colors": {
     "background": "#2E3440",
-    "surface": "#3B4252",
-    "surfaceHigh": "#434C5E",
+    "surface": "#B33B4252",
+    "surfaceHigh": "#B3434C5E",
     "onSurface": "#ECEFF4",
     "onSurfaceMuted": "#9AA4B8",
     "yellow": "#EBCB8B",
