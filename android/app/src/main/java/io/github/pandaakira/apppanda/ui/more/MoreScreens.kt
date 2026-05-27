@@ -80,6 +80,7 @@ fun ModulesScreen(onNavigate: (String) -> Unit) {
         ModuleEntry("files", "Archivos", PandaIcons.folder, LocalPandaColors.current.green),
         ModuleEntry("network", "Red LAN", PandaIcons.wifi, LocalPandaColors.current.green),
         ModuleEntry("vps", "VPS", PandaIcons.cloud, LocalPandaColors.current.yellow),
+        ModuleEntry("terminal", "Terminal", PandaIcons.dns, LocalPandaColors.current.cyan),
         ModuleEntry("temas", "Temas", PandaIcons.palette, LocalPandaColors.current.magenta),
     )
 
@@ -524,6 +525,9 @@ fun DisplaysScreen(app: PandaApp) {
     var data by remember {
         mutableStateOf<io.github.pandaakira.apppanda.data.models.ScreensResponse?>(null)
     }
+    var scenes by remember {
+        mutableStateOf<List<io.github.pandaakira.apppanda.data.models.Scene>>(emptyList())
+    }
     var error by remember { mutableStateOf<String?>(null) }
     var refresh by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
@@ -541,12 +545,49 @@ fun DisplaysScreen(app: PandaApp) {
         }
     }
 
+    LaunchedEffect(api) {
+        val current = api ?: return@LaunchedEffect
+        scenes = withContext(Dispatchers.IO) {
+            runCatching { current.scenes().scenes }.getOrDefault(emptyList())
+        }
+    }
+
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
         item { ScreenHeader("DISPLAYS :: niri", "tap output = toggle on/off") }
+
+        // Escenas: presets que combinan outputs + foco + audio de un toque.
+        if (scenes.isNotEmpty()) {
+            item {
+                PandaCard(title = "ESCENAS", accent = LocalPandaColors.current.magenta) {
+                    Text("aplica un preset de monitores",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(8.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        scenes.chunked(2).forEach { row ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                row.forEach { sc ->
+                                    androidx.compose.material3.OutlinedButton(
+                                        onClick = {
+                                            exec.run("Escena ${sc.label}") { it.applyScene(sc.name) }
+                                            scope.launch { kotlinx.coroutines.delay(900); refresh++ }
+                                        },
+                                        enabled = !exec.busy,
+                                        modifier = Modifier.weight(1f),
+                                    ) { Text(sc.label, maxLines = 1) }
+                                }
+                                if (row.size == 1) Spacer(Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         error?.let { item { ErrorCard(it) } }
         data?.error?.let { item { ErrorCard(it) } }
         data?.outputs?.let { outs ->
@@ -785,6 +826,89 @@ fun MediaScreen(app: PandaApp) {
                 }
             }
 
+            // ─── Micrófono ───
+            audio?.mic?.takeIf { it.error == null }?.let { mic ->
+                item {
+                    val accent = LocalPandaColors.current.orange
+                    val muted = mic.muted == true
+                    var micVol by remember(mic.volumePct, mic.muted) {
+                        mutableStateOf((mic.volumePct ?: 0).toFloat())
+                    }
+                    PandaCard(title = "MICRÓFONO", accent = accent) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = {
+                                exec.run(if (muted) "Activar mic" else "Silenciar mic") {
+                                    it.setMicMute("toggle")
+                                }
+                                scope.launch { kotlinx.coroutines.delay(300); audioRefresh++ }
+                            }) {
+                                Text(if (muted) "🔇" else "🎙", style = MaterialTheme.typography.titleLarge)
+                            }
+                            Slider(
+                                value = micVol,
+                                onValueChange = { micVol = it },
+                                onValueChangeFinished = {
+                                    exec.run("Mic ${micVol.toInt()}%") { it.setMicVolume(micVol.toInt()) }
+                                },
+                                valueRange = 0f..150f,
+                                enabled = !muted && !exec.busy,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text("${micVol.toInt()}%",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = if (muted) MaterialTheme.colorScheme.onSurfaceVariant else accent,
+                                modifier = Modifier.width(52.dp), textAlign = TextAlign.End)
+                        }
+                    }
+                }
+            }
+
+            // ─── Volumen por aplicación ───
+            audio?.apps?.takeIf { it.isNotEmpty() }?.let { apps ->
+                item {
+                    Spacer(Modifier.height(8.dp))
+                    Text(pandaDeco("POR APLICACIÓN"),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary)
+                }
+                items(apps.size) { i ->
+                    val app0 = apps[i]
+                    val accent = LocalPandaColors.current.cyan
+                    val muted = app0.muted
+                    var v by remember(app0.id, app0.volumePct, app0.muted) {
+                        mutableStateOf((app0.volumePct ?: 0).toFloat())
+                    }
+                    PandaCard(title = app0.label.take(28), accent = accent) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = {
+                                exec.run(if (muted) "Activar ${app0.label.take(12)}" else "Silenciar ${app0.label.take(12)}") {
+                                    it.setAppMute(app0.id, "toggle")
+                                }
+                                scope.launch { kotlinx.coroutines.delay(300); audioRefresh++ }
+                            }) {
+                                Text(if (muted) "🔇" else "🔊", style = MaterialTheme.typography.titleLarge)
+                            }
+                            Slider(
+                                value = v,
+                                onValueChange = { v = it },
+                                onValueChangeFinished = {
+                                    exec.run("${app0.label.take(12)} ${v.toInt()}%") {
+                                        it.setAppVolume(app0.id, v.toInt())
+                                    }
+                                },
+                                valueRange = 0f..150f,
+                                enabled = !muted && !exec.busy,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text("${v.toInt()}%",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = if (muted) MaterialTheme.colorScheme.onSurfaceVariant else accent,
+                                modifier = Modifier.width(52.dp), textAlign = TextAlign.End)
+                        }
+                    }
+                }
+            }
+
             audio?.error?.let { item { ErrorCard(it) } }
             val sinks = audio?.sinks
             if (sinks.isNullOrEmpty()) {
@@ -979,6 +1103,9 @@ fun GamesScreen(app: PandaApp) {
     val api by app.repository.api.collectAsState()
     var games by remember { mutableStateOf<List<io.github.pandaakira.apppanda.data.models.Game>?>(null) }
     var useGamescope by remember { mutableStateOf(true) }
+    var running by remember { mutableStateOf<io.github.pandaakira.apppanda.data.models.RunningGame?>(null) }
+    var runningRefresh by remember { mutableStateOf(0) }
+    var confirmClose by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val exec = io.github.pandaakira.apppanda.ui.components.rememberActionExecutor { api }
@@ -997,12 +1124,50 @@ fun GamesScreen(app: PandaApp) {
         }
     }
 
+    LaunchedEffect(api, runningRefresh) {
+        val current = api ?: return@LaunchedEffect
+        running = withContext(Dispatchers.IO) {
+            runCatching { current.runningGame().running }.getOrNull()
+        }
+    }
+
+    if (confirmClose) {
+        io.github.pandaakira.apppanda.ui.components.ConfirmDialog(
+            title = "¿Cerrar el juego?",
+            message = "Se enviará SIGTERM a «${running?.name ?: "el juego"}». Podrías perder progreso sin guardar.",
+            confirmLabel = "Cerrar",
+            onConfirm = {
+                confirmClose = false
+                exec.run("Cerrar ${running?.name?.take(18) ?: "juego"}") { it.closeGame() }
+                scope.launch { kotlinx.coroutines.delay(1500); runningRefresh++ }
+            },
+            onDismiss = { confirmClose = false },
+        )
+    }
+
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp)) {
         ScreenHeader(
             "STEAM :: library",
             "Gamescope ${if (useGamescope) "ON" else "OFF"} · ${games?.size ?: "—"} juegos",
         )
         Spacer(Modifier.height(8.dp))
+        running?.let { r ->
+            PandaCard(title = "EN CURSO", accent = LocalPandaColors.current.green) {
+                Text(r.name, style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface)
+                Spacer(Modifier.height(8.dp))
+                androidx.compose.material3.Button(
+                    onClick = { confirmClose = true },
+                    enabled = !exec.busy,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.25f),
+                        contentColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) { Text("Cerrar juego") }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
         when {
             api == null -> EmptyState("Configura el backend en Ajustes.")
             error != null -> ErrorCard(error!!)

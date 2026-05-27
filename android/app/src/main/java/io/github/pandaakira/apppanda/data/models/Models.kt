@@ -165,10 +165,53 @@ data class AudioMaster(
 )
 
 @Serializable
+data class AudioMic(
+    @SerialName("volume_pct") val volumePct: Int? = null,
+    val muted: Boolean? = null,
+    val source: String = "",
+    val error: String? = null,
+)
+
+@Serializable
+data class AudioApp(
+    val id: Int,
+    val label: String,
+    val media: String = "",
+    @SerialName("volume_pct") val volumePct: Int? = null,
+    val muted: Boolean = false,
+)
+
+@Serializable
 data class AudioResponse(
     val sinks: List<AudioSink>,
     val default: String = "",
     val master: AudioMaster? = null,
+    val mic: AudioMic? = null,
+    val apps: List<AudioApp> = emptyList(),
+    val error: String? = null,
+)
+
+@Serializable
+data class Scene(val name: String, val label: String)
+
+@Serializable
+data class ScenesResponse(val scenes: List<Scene> = emptyList())
+
+@Serializable
+data class RunningGame(val appid: String, val name: String)
+
+@Serializable
+data class RunningGameResponse(val running: RunningGame? = null)
+
+@Serializable
+data class InhibitResponse(val active: Boolean = false)
+
+@Serializable
+data class TerminalResponse(
+    val stdout: String = "",
+    val stderr: String = "",
+    val exit: Int = 0,
+    val truncated: Boolean = false,
     val error: String? = null,
 )
 

@@ -132,6 +132,14 @@ def load_config(path: str) -> dict:
     cfg["steam"].setdefault("exclude_appids", [
         "228980", "1070560", "1391110", "1493710", "1628350", "4183110",
     ])
+    # Escenas: presets que combinan outputs on/off + foco + sink de audio.
+    # Cada [scenes.<name>] = {label, outputs_on, outputs_off, focus, sink}.
+    cfg.setdefault("scenes", {})
+    # Mini terminal: opt-in. Ejecuta bash -lc como el usuario (sin sudo).
+    cfg.setdefault("terminal", {})
+    cfg["terminal"].setdefault("enabled", False)
+    cfg["terminal"].setdefault("timeout_s", 20)
+    cfg["terminal"].setdefault("max_output_kb", 64)
     return cfg
 
 
@@ -822,6 +830,124 @@ def audio_set_mute(state: str) -> str:
     return "ok"
 
 
+def _volume_avg_pct(vol: dict) -> int | None:
+    vals = []
+    for ch in (vol or {}).values():
+        if isinstance(ch, dict):
+            pct = str(ch.get("value_percent", "")).rstrip("%").strip()
+            try:
+                vals.append(float(pct))
+            except ValueError:
+                pass
+    return round(sum(vals) / len(vals)) if vals else None
+
+
+def audio_app_inputs() -> tuple[list[dict], str | None]:
+    """Streams de audio por aplicación (sink-inputs): id, etiqueta, vol %, mute."""
+    rc, stdout, stderr = _pactl_run(["-f", "json", "list", "sink-inputs"])
+    if rc != 0:
+        return [], (stderr or stdout or f"exit {rc}")[:200]
+    try:
+        data = json.loads(stdout)
+    except json.JSONDecodeError as e:
+        return [], f"JSON inválido: {e}"
+    out = []
+    for si in data:
+        props = si.get("properties") or {}
+        label = (
+            (props.get("application.name") or "").strip()
+            or (props.get("media.name") or "").strip()
+            or (props.get("application.process.binary") or "").strip()
+            or f"stream {si.get('index')}"
+        )
+        out.append({
+            "id": si.get("index"),
+            "label": label,
+            "media": (props.get("media.name") or "").strip(),
+            "volume_pct": _volume_avg_pct(si.get("volume") or {}),
+            "muted": bool(si.get("mute")),
+        })
+    return out, None
+
+
+def audio_set_app_volume(input_id: str, pct: int) -> str:
+    if not str(input_id).isdigit():
+        return f"id inválido: {input_id}"
+    try:
+        pct = max(0, min(150, int(pct)))
+    except (TypeError, ValueError):
+        return f"pct inválido: {pct!r}"
+    rc, _, stderr = _pactl_run(
+        ["set-sink-input-volume", str(input_id), f"{pct}%"])
+    if rc != 0:
+        return (stderr or f"exit {rc}")[:200]
+    return "ok"
+
+
+def audio_set_app_mute(input_id: str, state: str) -> str:
+    if not str(input_id).isdigit():
+        return f"id inválido: {input_id}"
+    arg = {"on": "1", "off": "0", "toggle": "toggle"}.get(state)
+    if arg is None:
+        return f"estado inválido: {state}"
+    rc, _, stderr = _pactl_run(["set-sink-input-mute", str(input_id), arg])
+    if rc != 0:
+        return (stderr or f"exit {rc}")[:200]
+    return "ok"
+
+
+# ─── Micrófono (source por defecto) ───────────────────────────────────────────
+
+def audio_source() -> dict:
+    """Volumen y mute de la fuente (micrófono) por defecto."""
+    rc, stdout, stderr = _pactl_run(["get-default-source"])
+    if rc != 0:
+        return {"volume_pct": None, "muted": None, "source": "",
+                "error": (stderr or stdout or f"exit {rc}")[:200]}
+    default = stdout.strip()
+    rc, stdout, stderr = _pactl_run(["-f", "json", "list", "sources"])
+    if rc != 0:
+        return {"volume_pct": None, "muted": None, "source": default,
+                "error": (stderr or stdout or f"exit {rc}")[:200]}
+    try:
+        data = json.loads(stdout)
+    except json.JSONDecodeError as e:
+        return {"volume_pct": None, "muted": None, "source": default,
+                "error": f"JSON inválido: {e}"}
+    for s in data:
+        if s.get("name") != default:
+            continue
+        return {
+            "volume_pct": _volume_avg_pct(s.get("volume") or {}),
+            "muted": bool(s.get("mute")),
+            "source": default,
+            "error": None,
+        }
+    return {"volume_pct": None, "muted": None, "source": default,
+            "error": "fuente por defecto no encontrada"}
+
+
+def audio_set_mic_mute(state: str) -> str:
+    arg = {"on": "1", "off": "0", "toggle": "toggle"}.get(state)
+    if arg is None:
+        return f"estado inválido: {state}"
+    rc, _, stderr = _pactl_run(["set-source-mute", "@DEFAULT_SOURCE@", arg])
+    if rc != 0:
+        return (stderr or f"exit {rc}")[:200]
+    return "ok"
+
+
+def audio_set_mic_volume(pct: int) -> str:
+    try:
+        pct = max(0, min(150, int(pct)))
+    except (TypeError, ValueError):
+        return f"pct inválido: {pct!r}"
+    rc, _, stderr = _pactl_run(["set-source-volume", "@DEFAULT_SOURCE@", f"{pct}%"])
+    if rc != 0:
+        return (stderr or f"exit {rc}")[:200]
+    return "ok"
+
+
 # ─── MPRIS (playerctl) ───────────────────────────────────────────────────────
 
 def _playerctl_env() -> dict:
@@ -1161,6 +1287,171 @@ def steam_launch(appid: str, cfg: dict) -> str:
             or f"exit {proc.returncode}")
 
 
+def steam_running(cfg: dict) -> dict | None:
+    """Juego de Steam corriendo ahora, leyendo RunningAppID del registry.vdf.
+    Devuelve {appid, name} o None si no hay ninguno."""
+    candidates = [
+        Path.home() / ".steam/registry.vdf",
+        Path.home() / ".steam/steam/registry.vdf",
+    ]
+    appid = None
+    for reg in candidates:
+        if not reg.exists():
+            continue
+        try:
+            text = reg.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        m = re.search(r'"RunningAppID"\s+"(\d+)"', text)
+        if m:
+            appid = m.group(1)
+            break
+    if not appid or appid == "0":
+        return None
+    name = next(
+        (g["name"] for g in steam_games(cfg) if g["appid"] == appid), None,
+    )
+    return {"appid": appid, "name": name or f"AppID {appid}"}
+
+
+def steam_close(cfg: dict) -> str:
+    """Cierra el juego en curso: manda SIGTERM a los procesos cuyo cmdline
+    contiene `AppId=<appid>` (el reaper de SteamLaunch y sus hijos directos)."""
+    running = steam_running(cfg)
+    if not running:
+        return "no hay juego corriendo"
+    appid = running["appid"]
+    needle = f"AppId={appid}"
+    killed = 0
+    for proc_dir in Path("/proc").glob("[0-9]*"):
+        try:
+            cmdline = (proc_dir / "cmdline").read_bytes()
+        except OSError:
+            continue
+        if needle.encode() not in cmdline:
+            continue
+        try:
+            pid = int(proc_dir.name)
+            os.kill(pid, 15)  # SIGTERM
+            killed += 1
+        except (ValueError, ProcessLookupError, PermissionError):
+            continue
+    if killed == 0:
+        return f"no encontré proceso para AppID {appid}"
+    return "ok"
+
+
+# ─── Inhibir suspensión (systemd-inhibit) ─────────────────────────────────────
+
+_INHIBITOR: subprocess.Popen | None = None
+_INHIBITOR_LOCK = threading.Lock()
+
+
+def power_inhibit(on: bool) -> str:
+    """Activa/desactiva un bloqueo de suspensión/idle. Mantiene vivo un
+    `systemd-inhibit ... sleep infinity`; matarlo libera el bloqueo."""
+    global _INHIBITOR
+    with _INHIBITOR_LOCK:
+        running = _INHIBITOR is not None and _INHIBITOR.poll() is None
+        if on:
+            if running:
+                return "ok"
+            try:
+                _INHIBITOR = subprocess.Popen(
+                    ["systemd-inhibit", "--what=sleep:idle",
+                     "--who=Panda Control", "--why=Sergio lo pidió desde el celu",
+                     "--mode=block", "sleep", "infinity"],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+            except FileNotFoundError:
+                return "systemd-inhibit no encontrado"
+            return "ok"
+        else:
+            if running:
+                _INHIBITOR.terminate()
+            _INHIBITOR = None
+            return "ok"
+
+
+def power_inhibit_state() -> bool:
+    with _INHIBITOR_LOCK:
+        return _INHIBITOR is not None and _INHIBITOR.poll() is None
+
+
+# ─── Escenas (presets de monitores + audio) ───────────────────────────────────
+
+def scenes_list(cfg: dict) -> list[dict]:
+    scenes = cfg.get("scenes") or {}
+    out = []
+    for name, spec in scenes.items():
+        if isinstance(spec, dict):
+            out.append({"name": name, "label": spec.get("label", name)})
+    return out
+
+
+def scene_apply(cfg: dict, name: str) -> str:
+    """Aplica una escena: apaga/enciende outputs, fija foco y sink de audio.
+    Compone las acciones ya existentes. Devuelve 'ok' o los errores juntos."""
+    spec = (cfg.get("scenes") or {}).get(name)
+    if not isinstance(spec, dict):
+        return f"escena '{name}' no configurada"
+    errors = []
+    # Apagar primero (por si se libera una salida), luego encender.
+    for o in spec.get("outputs_off", []) or []:
+        r = niri_set_output(o, False)
+        if r != "ok":
+            errors.append(f"off {o}: {r}")
+    for o in spec.get("outputs_on", []) or []:
+        r = niri_set_output(o, True)
+        if r != "ok":
+            errors.append(f"on {o}: {r}")
+    focus = spec.get("focus")
+    if focus:
+        rc, _, stderr = _niri_run(["action", "focus-monitor", focus])
+        if rc != 0:
+            errors.append(f"focus {focus}: {(stderr or rc)}")
+    sink = spec.get("sink")
+    if sink:
+        r = audio_set_sink(sink)
+        if r != "ok":
+            errors.append(f"sink: {r}")
+    return "; ".join(errors)[:300] if errors else "ok"
+
+
+# ─── Mini terminal (opt-in) ───────────────────────────────────────────────────
+
+def terminal_run(cfg: dict, cmd: str) -> dict:
+    """Ejecuta `bash -lc <cmd>` como el usuario del daemon. Gated por
+    [terminal].enabled (off por defecto). Sin sudo. Timeout y salida capada."""
+    tcfg = cfg.get("terminal") or {}
+    if not tcfg.get("enabled"):
+        return {"error": "terminal deshabilitada ([terminal].enabled=true)",
+                "exit": -1}
+    cmd = (cmd or "").strip()
+    if not cmd:
+        return {"error": "comando vacío", "exit": -1}
+    timeout = int(tcfg.get("timeout_s", 20))
+    max_bytes = int(tcfg.get("max_output_kb", 64)) * 1024
+    uid = os.getuid()
+    env = {**os.environ, "XDG_RUNTIME_DIR": f"/run/user/{uid}", "LC_ALL": "C.UTF-8"}
+    try:
+        proc = subprocess.run(
+            ["bash", "-lc", cmd], capture_output=True, text=True,
+            timeout=timeout, env=env,
+        )
+    except subprocess.TimeoutExpired:
+        return {"error": f"timeout ({timeout}s)", "exit": -1}
+    out = proc.stdout or ""
+    err = proc.stderr or ""
+    truncated = len(out) > max_bytes or len(err) > max_bytes
+    return {
+        "stdout": out[:max_bytes],
+        "stderr": err[:max_bytes],
+        "exit": proc.returncode,
+        "truncated": truncated,
+    }
+
+
 # Power actions ──────────────────────────────────────────────────────────────
 
 POWER_CMDS = {
@@ -1498,8 +1789,21 @@ def main() -> None:
             audio_master=audio_master,
             audio_set_volume=audio_set_volume,
             audio_set_mute=audio_set_mute,
+            audio_app_inputs=audio_app_inputs,
+            audio_set_app_volume=audio_set_app_volume,
+            audio_set_app_mute=audio_set_app_mute,
+            audio_source=audio_source,
+            audio_set_mic_mute=audio_set_mic_mute,
+            audio_set_mic_volume=audio_set_mic_volume,
             clipboard_get=clipboard_get,
             clipboard_set=clipboard_set,
+            scenes_list=scenes_list,
+            scene_apply=scene_apply,
+            terminal_run=terminal_run,
+            steam_running=steam_running,
+            steam_close=steam_close,
+            power_inhibit=power_inhibit,
+            power_inhibit_state=power_inhibit_state,
             mpris_players=mpris_players,
             mpris_status=mpris_status,
             mpris_action=mpris_action,

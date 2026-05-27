@@ -142,6 +142,9 @@ fun AppNav(app: PandaApp, theme: PandaTheme) {
             composable("vps") { VpsScreen(app = app) }
             composable("temas") { ThemesScreen(app = app) }
             composable("power") { PowerScreen(app = app) }
+            composable("terminal") {
+                io.github.pandaakira.apppanda.ui.more.TerminalScreen(app = app)
+            }
             composable("settings") {
                 io.github.pandaakira.apppanda.ui.settings.SettingsScreen(app = app)
             }

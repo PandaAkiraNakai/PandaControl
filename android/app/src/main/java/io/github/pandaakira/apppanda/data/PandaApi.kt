@@ -4,6 +4,10 @@ import io.github.pandaakira.apppanda.data.models.ActionResult
 import io.github.pandaakira.apppanda.data.models.AppsResponse
 import io.github.pandaakira.apppanda.data.models.AudioResponse
 import io.github.pandaakira.apppanda.data.models.ClipboardResponse
+import io.github.pandaakira.apppanda.data.models.InhibitResponse
+import io.github.pandaakira.apppanda.data.models.RunningGameResponse
+import io.github.pandaakira.apppanda.data.models.ScenesResponse
+import io.github.pandaakira.apppanda.data.models.TerminalResponse
 import io.github.pandaakira.apppanda.data.models.DiskResponse
 import io.github.pandaakira.apppanda.data.models.FileUploadResponse
 import io.github.pandaakira.apppanda.data.models.FilesDeleteReq
@@ -156,6 +160,15 @@ class PandaApi(
 
     suspend fun clipboardGet(): ClipboardResponse =
         client.get(url("/api/v1/clipboard")).body()
+
+    suspend fun scenes(): ScenesResponse =
+        client.get(url("/api/v1/scenes")).body()
+
+    suspend fun runningGame(): RunningGameResponse =
+        client.get(url("/api/v1/games/running")).body()
+
+    suspend fun inhibitState(): InhibitResponse =
+        client.get(url("/api/v1/inhibit")).body()
 
     suspend fun screens(): ScreensResponse =
         client.get(url("/api/v1/screens")).body()
@@ -327,6 +340,33 @@ class PandaApi(
     /** state: "on" | "off" | "toggle". */
     suspend fun setMute(state: String) =
         action("/api/v1/audio/mute", body = mapOf("state" to state))
+
+    suspend fun setAppVolume(id: Int, pct: Int) =
+        action("/api/v1/audio/app/$id/volume", body = mapOf("pct" to pct))
+
+    suspend fun setAppMute(id: Int, state: String) =
+        action("/api/v1/audio/app/$id/mute", body = mapOf("state" to state))
+
+    suspend fun setMicMute(state: String) =
+        action("/api/v1/audio/mic/mute", body = mapOf("state" to state))
+
+    suspend fun setMicVolume(pct: Int) =
+        action("/api/v1/audio/mic/volume", body = mapOf("pct" to pct))
+
+    suspend fun applyScene(name: String) =
+        action("/api/v1/scenes/$name/apply")
+
+    suspend fun closeGame() =
+        action("/api/v1/games/close", confirm = true)
+
+    suspend fun setInhibit(on: Boolean) =
+        action("/api/v1/inhibit/${if (on) "on" else "off"}")
+
+    suspend fun terminalRun(cmd: String): TerminalResponse =
+        client.post(url("/api/v1/terminal/run")) {
+            contentType(Application.Json)
+            setBody(mapOf("cmd" to cmd))
+        }.body()
 
     suspend fun clipboardSet(text: String) =
         action("/api/v1/clipboard", body = mapOf("text" to text))

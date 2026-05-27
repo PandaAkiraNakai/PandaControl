@@ -367,8 +367,17 @@ class _Handler(BaseHTTPRequestHandler):
             body = self._metrics()
         elif path == "/api/v1/audio/sinks":
             body = self._audio()
+        elif path == "/api/v1/audio/apps":
+            apps, err = self.api.audio_app_inputs()
+            body = {"apps": apps, "error": err}
         elif path == "/api/v1/clipboard":
             body = self.api.clipboard_get()
+        elif path == "/api/v1/scenes":
+            body = {"scenes": self.api.scenes_list(api.ctx.cfg)}
+        elif path == "/api/v1/games/running":
+            body = {"running": self.api.steam_running(api.ctx.cfg)}
+        elif path == "/api/v1/inhibit":
+            body = {"active": self.api.power_inhibit_state()}
         elif path == "/api/v1/screens":
             body = self._screens()
         elif path == "/api/v1/media/players":
@@ -418,6 +427,7 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/v1/processes/",
         "/api/v1/updates/apply",
         "/api/v1/files/delete",
+        "/api/v1/games/close",
     )
 
     def _dispatch_post(self):
@@ -486,6 +496,44 @@ class _Handler(BaseHTTPRequestHandler):
                 state = (data.get("state") or "toggle").strip()
                 result = api.audio_set_mute(state)
                 body = {"state": state, "result": result}
+            elif path.startswith("/api/v1/audio/app/") and path.endswith("/volume"):
+                sid = path[len("/api/v1/audio/app/"):-len("/volume")]
+                data = self._read_json_body()
+                result = api.audio_set_app_volume(sid, data.get("pct"))
+                body = {"id": sid, "result": result}
+            elif path.startswith("/api/v1/audio/app/") and path.endswith("/mute"):
+                sid = path[len("/api/v1/audio/app/"):-len("/mute")]
+                data = self._read_json_body()
+                result = api.audio_set_app_mute(sid, (data.get("state") or "toggle").strip())
+                body = {"id": sid, "result": result}
+            elif path == "/api/v1/audio/mic/mute":
+                data = self._read_json_body()
+                state = (data.get("state") or "toggle").strip()
+                result = api.audio_set_mic_mute(state)
+                body = {"state": state, "result": result}
+            elif path == "/api/v1/audio/mic/volume":
+                data = self._read_json_body()
+                result = api.audio_set_mic_volume(data.get("pct"))
+                body = {"result": result}
+            elif path.startswith("/api/v1/scenes/") and path.endswith("/apply"):
+                name = path[len("/api/v1/scenes/"):-len("/apply")]
+                result = api.scene_apply(api.ctx.cfg, name)
+                body = {"scene": name, "result": result}
+            elif path == "/api/v1/games/close":
+                result = api.steam_close(api.ctx.cfg)
+                body = {"result": result}
+            elif path.startswith("/api/v1/inhibit/"):
+                action = path[len("/api/v1/inhibit/"):]
+                if action not in ("on", "off"):
+                    self._err(400, "action must be on|off")
+                    self._audit(path, 400)
+                    return
+                result = api.power_inhibit(action == "on")
+                body = {"action": action, "result": result,
+                        "active": api.power_inhibit_state()}
+            elif path == "/api/v1/terminal/run":
+                data = self._read_json_body()
+                body = api.terminal_run(api.ctx.cfg, data.get("cmd", ""))
             elif path == "/api/v1/clipboard":
                 data = self._read_json_body()
                 text = data.get("text")
@@ -913,10 +961,13 @@ class _Handler(BaseHTTPRequestHandler):
     def _audio(self) -> dict:
         sinks, err = self.api.audio_sinks()
         default, err2 = self.api.audio_default_sink()
+        apps, _ = self.api.audio_app_inputs()
         return {
             "sinks": sinks,
             "default": default,
             "master": self.api.audio_master(),
+            "mic": self.api.audio_source(),
+            "apps": apps,
             "error": err or err2,
         }
 

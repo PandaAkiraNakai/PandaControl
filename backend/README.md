@@ -49,7 +49,24 @@ El portapapeles del PC se sincroniza vía `wl-clipboard`:
 `POST /api/v1/clipboard {text}` escribe (wl-copy) y `GET /api/v1/clipboard`
 lee (wl-paste). El volumen maestro del sink por defecto se controla con
 `POST /api/v1/audio/volume {pct: 0..150}` y
-`POST /api/v1/audio/mute {state: on|off|toggle}` (vía `pactl`).
+`POST /api/v1/audio/mute {state: on|off|toggle}` (vía `pactl`). Además:
+volumen/mute **por aplicación** (`GET /api/v1/audio/apps`,
+`POST /api/v1/audio/app/{id}/{volume|mute}`) y **micrófono**
+(`POST /api/v1/audio/mic/{mute|volume}`; el estado viaja en `mic` de
+`/audio/sinks`), todo vía `pactl` sobre sink-inputs y el source por defecto.
+
+## Escenas, sesión y terminal
+
+- **Escenas** — `[scenes.<name>]` define un preset (outputs on/off + foco +
+  sink). `GET /api/v1/scenes` lista; `POST /api/v1/scenes/{name}/apply`
+  compone las acciones de niri/audio ya existentes.
+- **Steam / sesión** — `GET /api/v1/games/running` lee `RunningAppID` del
+  `registry.vdf`; `POST /api/v1/games/close` (X-Confirm) manda SIGTERM al
+  reaper `AppId=`. `GET/POST /api/v1/inhibit[/{on|off}]` mantiene vivo un
+  `systemd-inhibit … sleep infinity` para bloquear la suspensión.
+- **Mini terminal** — `POST /api/v1/terminal/run {cmd}` corre `bash -lc`
+  como el usuario (sin sudo), gated por `[terminal].enabled` (off por
+  defecto), con timeout y salida capada.
 
 ## Módulo Archivos (gestor)
 

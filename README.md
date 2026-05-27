@@ -41,9 +41,9 @@ PC; si no, no existe para nadie más.
 |---|---|
 | **Status** | CPU, RAM, disco, red, temperaturas, GPUs y estado SMART en vivo. |
 | **Trends** | Gráficas históricas 1h / 6h / 24h, dibujadas nativamente en Canvas. |
-| **Media** | Control MPRIS (play/pausa, seek ±15s, fullscreen del video), **volumen maestro del sistema + silenciar** (slider, vía `pactl`), cambiar el sink de audio, prender/apagar pantallas (DPMS), lanzar apps GUI, lanzar juegos de Steam y comandos del WM `niri` desde una whitelist estricta. |
+| **Media** | Control MPRIS (play/pausa, seek ±15s, fullscreen del video), **volumen maestro + por aplicación + silenciar** y **mute/volumen del micrófono** (sliders, vía `pactl`), cambiar el sink de audio, prender/apagar pantallas (DPMS), **escenas** (presets que combinan outputs + foco + audio de un toque), lanzar apps GUI, **lanzar y cerrar juegos de Steam** (con detección del juego en curso) y comandos del WM `niri` desde una whitelist estricta. |
 | **Control** | Mouse y teclado remotos: un **touchpad** que mueve el cursor por deltas, clic izquierdo/medio/derecho, scroll de dos dedos y swipe horizontal de dos dedos para navegar atrás/adelante, teclas especiales y atajos (Esc, Tab, flechas, Ctrl+C/V/Z, Alt+Tab, etc.), escritura de texto libre y **portapapeles bidireccional** (traer del PC / enviar al PC, vía `wl-clipboard`). Mouse vía `ydotool`, teclado vía `wtype`. |
-| **Sistema** | Apagar / reiniciar / suspender / bloquear (con confirmación), listar y matar procesos, gestionar servicios (start/stop/restart), ver logs de `journalctl`, revisar y aplicar actualizaciones (`checkupdates`), ver vecinos de la LAN y consultar tus VPS por SSH. |
+| **Sistema** | Apagar / reiniciar / suspender / bloquear (con confirmación), **inhibir la suspensión** (útil mientras descarga algo), una **mini terminal** opt-in (`bash -lc`, sin sudo), listar y matar procesos, gestionar servicios (start/stop/restart), ver logs de `journalctl`, revisar y aplicar actualizaciones (`checkupdates`), ver vecinos de la LAN y consultar tus VPS por SSH. |
 | **Archivos** | Gestor completo de los directorios que compartas: navegar subcarpetas (con breadcrumb), descargar al celular, subir a la carpeta actual, crear carpeta, renombrar, borrar (archivos y carpetas, con confirmación) y abrir cualquier archivo/carpeta en el PC con su app por defecto (`xdg-open`). Anti path-traversal: todo queda confinado al `shared_dir`. |
 | **Temas** | Cambiar el look completo de la app: cada tema es un paquete que define **colores, fuente, estilo de iconos, formas/bordes y fondos opcionales** (imágenes de la misma carpeta; si hay varias, eliges con qué wallpaper aplicar el tema). Los temas viven como archivos `*.json` en una carpeta del PC (`[themes].dir`); la app los lista y aplica al vuelo. Para agregar un tema basta dejar un `.json` nuevo — no hay que recompilar. Incluye *Cyberpunk* (default), *Synthwave*, *Matrix*, *Nord* y *Soft* (AMOLED). |
 | **Push del sistema** | Un `ForegroundService` mantiene el SSE vivo en segundo plano y dispara notificaciones nativas ante alertas con histéresis (CPU/RAM/disco/temps/GPU/carga), servicios caídos, sesiones nuevas, boot o salida de suspensión. |
@@ -356,7 +356,8 @@ GET  /api/v1/processes?sort=cpu|ram&limit=N
 GET  /api/v1/services
 GET  /api/v1/logs?priority=err&n=30
 GET  /api/v1/metrics?range=1h|6h|24h
-GET  /api/v1/audio/sinks   (incluye master: volumen % + mute del sink default)
+GET  /api/v1/audio/sinks   (incluye master, mic y apps: volumen %/mute)
+GET  /api/v1/audio/apps    ·  /scenes  ·  /games/running  ·  /inhibit
 GET  /api/v1/clipboard     (texto del portapapeles del PC)
 GET  /api/v1/screens
 GET  /api/v1/media/players  ·  /media/{player}/status
@@ -375,6 +376,11 @@ POST /api/v1/updates/apply                          X-Confirm: true
 POST /api/v1/audio/sink            {sink: "..."}
 POST /api/v1/audio/volume          {pct: 0..150}
 POST /api/v1/audio/mute            {state: "on"|"off"|"toggle"}
+POST /api/v1/audio/app/{id}/{volume|mute}    ·  /audio/mic/{mute|volume}
+POST /api/v1/scenes/{name}/apply             (preset de monitores + audio)
+POST /api/v1/games/close                     X-Confirm: true
+POST /api/v1/inhibit/{on|off}                (inhibir suspensión)
+POST /api/v1/terminal/run          {cmd}     ([terminal].enabled, sin sudo)
 POST /api/v1/clipboard             {text: "..."}      (escribe al portapapeles)
 POST /api/v1/screens/{output}/{on|off}
 POST /api/v1/screens/dpms/{on|off}
@@ -430,5 +436,5 @@ POST /api/v1/sudo/{rid}/decision   {approve: bool}    (huella en la app)
 MIT. Ver [LICENSE](LICENSE).
 ```
 <!-- profile-excerpt -->
-**Panel Android + backend Python** para controlar tu PC Linux desde el celu vía **Tailscale**. Kotlin/Compose con tema cyberpunk, Ktor 3 + SSE para push en vivo, ForegroundService para notifs en background. Daemon stdlib que expone REST/SSE bajo polkit narrow-scope: poder, kill, services, audio sinks + volumen/mute (pactl), portapapeles (wl-clipboard), pantallas niri + DPMS, MPRIS con seek±15/fullscreen, lanzar apps/juegos Steam, gestor de archivos (navegar/subir/bajar/renombrar/borrar/abrir, anti path-traversal), journal, updates `pacman`. Auth dual: identidad Tailscale (`tailscale whois`) o Bearer token. Cero servicios externos, cero telemetría. `// linux-control · phone-rig · tailnet-native`
+**Panel Android + backend Python** para controlar tu PC Linux desde el celu vía **Tailscale**. Kotlin/Compose con tema cyberpunk, Ktor 3 + SSE para push en vivo, ForegroundService para notifs en background. Daemon stdlib que expone REST/SSE bajo polkit narrow-scope: poder, kill, services, inhibir suspensión, mini-terminal opt-in, audio maestro/por-app/mic (pactl), portapapeles (wl-clipboard), pantallas niri + DPMS + escenas (presets), MPRIS con seek±15/fullscreen, lanzar/cerrar juegos Steam, gestor de archivos (navegar/subir/bajar/renombrar/borrar/abrir, anti path-traversal), journal, updates `pacman`. Auth dual: identidad Tailscale (`tailscale whois`) o Bearer token. Cero servicios externos, cero telemetría. `// linux-control · phone-rig · tailnet-native`
 <!-- /profile-excerpt -->

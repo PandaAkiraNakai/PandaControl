@@ -180,3 +180,33 @@ max_upload_mb = 500
 # ~ se expande al home del usuario que corre el daemon.
 [themes]
 dir = "~/.config/apppanda-backend/temas"
+
+# ─── Escenas (presets de monitores + audio) ──────────────────────────────
+#
+# Cada [scenes.<name>] es un preset que la app aplica de un toque. Compone
+# acciones ya existentes: apaga/enciende outputs de niri, fija el monitor
+# enfocado y opcionalmente cambia el sink de audio por defecto. Los nombres
+# de output salen de `niri msg outputs` (p. ej. DP-1, HDMI-A-1).
+#
+# [scenes.trabajo]
+# label = "Trabajo"
+# outputs_on = ["DP-1", "DP-2"]
+# outputs_off = ["HDMI-A-1"]
+# focus = "DP-2"
+# sink = "alsa_output...analog-stereo"   # opcional
+#
+# [scenes.cine]
+# label = "Cine (TV)"
+# outputs_on = ["HDMI-A-1"]
+# outputs_off = ["DP-1", "DP-2"]
+# focus = "HDMI-A-1"
+
+# ─── Mini terminal (opt-in) ───────────────────────────────────────────────
+#
+# Ejecuta `bash -lc <cmd>` como el usuario del daemon (SIN sudo). Está
+# DESHABILITADA por defecto: es ejecución de comandos arbitrarios desde el
+# celular, así que solo actívala si confías en tu token + tu tailnet.
+[terminal]
+enabled = false
+timeout_s = 20
+max_output_kb = 64

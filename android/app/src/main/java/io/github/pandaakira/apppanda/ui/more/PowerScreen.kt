@@ -13,10 +13,12 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -24,9 +26,13 @@ import androidx.compose.ui.unit.dp
 import io.github.pandaakira.apppanda.PandaApp
 import io.github.pandaakira.apppanda.ui.components.ActionResultBanner
 import io.github.pandaakira.apppanda.ui.components.ConfirmDialog
+import io.github.pandaakira.apppanda.ui.components.PandaCard
 import io.github.pandaakira.apppanda.ui.components.ScreenHeader
 import io.github.pandaakira.apppanda.ui.components.pandaDeco
 import io.github.pandaakira.apppanda.ui.components.rememberActionExecutor
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private data class PowerOption(
     val action: String,
@@ -39,7 +45,17 @@ private data class PowerOption(
 fun PowerScreen(app: PandaApp) {
     val api by app.repository.api.collectAsState()
     val exec = rememberActionExecutor { api }
+    val scope = rememberCoroutineScope()
     var pending by remember { mutableStateOf<PowerOption?>(null) }
+    var inhibited by remember { mutableStateOf(false) }
+    var inhibitRefresh by remember { mutableStateOf(0) }
+
+    LaunchedEffect(api, inhibitRefresh) {
+        val current = api ?: return@LaunchedEffect
+        inhibited = withContext(Dispatchers.IO) {
+            runCatching { current.inhibitState().active }.getOrDefault(false)
+        }
+    }
 
     val options = listOf(
         PowerOption("off", "Apagar", LocalPandaColors.current.red,
@@ -69,6 +85,38 @@ fun PowerScreen(app: PandaApp) {
             ) {
                 Text(opt.label, style = MaterialTheme.typography.titleLarge)
             }
+        }
+
+        Spacer(Modifier.height(4.dp))
+        PandaCard(
+            title = "INHIBIR SUSPENSIÓN",
+            accent = if (inhibited) LocalPandaColors.current.green
+                     else LocalPandaColors.current.cyan,
+        ) {
+            Text(
+                if (inhibited) "Activo: la torre NO se suspenderá ni entrará en idle."
+                else "Evita que la torre se suspenda (útil mientras descarga algo).",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            Button(
+                onClick = {
+                    val target = !inhibited
+                    exec.run(if (target) "Inhibir suspensión" else "Permitir suspensión") {
+                        it.setInhibit(target)
+                    }
+                    scope.launch { kotlinx.coroutines.delay(300); inhibitRefresh++ }
+                },
+                enabled = !exec.busy && api != null,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = (if (inhibited) LocalPandaColors.current.green
+                                      else LocalPandaColors.current.cyan).copy(alpha = 0.2f),
+                    contentColor = if (inhibited) LocalPandaColors.current.green
+                                   else LocalPandaColors.current.cyan,
+                ),
+            ) { Text(if (inhibited) "Desactivar" else "Activar") }
         }
 
         Spacer(Modifier.height(12.dp))
