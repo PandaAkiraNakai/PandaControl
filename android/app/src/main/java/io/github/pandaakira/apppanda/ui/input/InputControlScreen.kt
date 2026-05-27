@@ -102,6 +102,8 @@ fun InputControlScreen(app: PandaApp) {
 
     val acc = remember { MouseAccumulator() }
     var typeText by remember { mutableStateOf("") }
+    var clipText by remember { mutableStateOf("") }
+    var clipStatus by remember { mutableStateOf<String?>(null) }
 
     // Stream de mouse: una sola conexión persistente que emite los deltas a
     // cadencia fija sin esperar acks (frecuencia regular, suave). Vive SOLO
@@ -403,6 +405,74 @@ fun InputControlScreen(app: PandaApp) {
                         contentColor = LocalPandaColors.current.magenta,
                     ),
                 ) { Text("Escribir") }
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // ─── Portapapeles ─────────────────────────────────────────────────
+        PandaCard(title = "PORTAPAPELES", accent = LocalPandaColors.current.cyan) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "sincroniza texto con el PC (wl-clipboard)",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = clipText,
+                onValueChange = { clipText = it },
+                placeholder = { Text("texto del portapapeles") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 2,
+                maxLines = 5,
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = {
+                        val current = api ?: return@OutlinedButton
+                        clipStatus = "Trayendo…"
+                        scope.launch(Dispatchers.IO) {
+                            val r = runCatching { current.clipboardGet() }.getOrNull()
+                            clipText = r?.text ?: clipText
+                            clipStatus = when {
+                                r == null -> "error de red"
+                                r.error != null -> r.error
+                                r.text.isBlank() -> "portapapeles vacío"
+                                else -> "traído del PC"
+                            }
+                        }
+                    },
+                    enabled = api != null,
+                    modifier = Modifier.weight(1f),
+                ) { Text("Traer del PC") }
+                Button(
+                    onClick = {
+                        val t = clipText
+                        val current = api ?: return@Button
+                        clipStatus = "Enviando…"
+                        scope.launch(Dispatchers.IO) {
+                            val r = runCatching { current.clipboardSet(t) }.getOrNull()
+                            clipStatus = if (r?.ok == true) "enviado al PC"
+                                         else r?.result?.ifBlank { null } ?: "error"
+                        }
+                    },
+                    enabled = api != null,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = LocalPandaColors.current.cyan.copy(alpha = 0.3f),
+                        contentColor = LocalPandaColors.current.cyan,
+                    ),
+                ) { Text("Enviar al PC") }
+            }
+            clipStatus?.let {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    it,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = LocalPandaColors.current.cyan,
+                )
             }
         }
 

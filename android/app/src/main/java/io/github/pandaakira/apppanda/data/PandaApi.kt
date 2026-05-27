@@ -3,6 +3,7 @@ package io.github.pandaakira.apppanda.data
 import io.github.pandaakira.apppanda.data.models.ActionResult
 import io.github.pandaakira.apppanda.data.models.AppsResponse
 import io.github.pandaakira.apppanda.data.models.AudioResponse
+import io.github.pandaakira.apppanda.data.models.ClipboardResponse
 import io.github.pandaakira.apppanda.data.models.DiskResponse
 import io.github.pandaakira.apppanda.data.models.FileUploadResponse
 import io.github.pandaakira.apppanda.data.models.FilesIndexResponse
@@ -149,6 +150,9 @@ class PandaApi(
     suspend fun audio(): AudioResponse =
         client.get(url("/api/v1/audio/sinks")).body()
 
+    suspend fun clipboardGet(): ClipboardResponse =
+        client.get(url("/api/v1/clipboard")).body()
+
     suspend fun screens(): ScreensResponse =
         client.get(url("/api/v1/screens")).body()
 
@@ -291,6 +295,16 @@ class PandaApi(
 
     suspend fun setAudioSink(sink: String) =
         action("/api/v1/audio/sink", body = mapOf("sink" to sink))
+
+    suspend fun setVolume(pct: Int) =
+        action("/api/v1/audio/volume", body = mapOf("pct" to pct))
+
+    /** state: "on" | "off" | "toggle". */
+    suspend fun setMute(state: String) =
+        action("/api/v1/audio/mute", body = mapOf("state" to state))
+
+    suspend fun clipboardSet(text: String) =
+        action("/api/v1/clipboard", body = mapOf("text" to text))
 
     suspend fun setScreen(output: String, on: Boolean) =
         action("/api/v1/screens/$output/${if (on) "on" else "off"}")

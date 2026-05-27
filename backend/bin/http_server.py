@@ -366,6 +366,8 @@ class _Handler(BaseHTTPRequestHandler):
             body = self._metrics()
         elif path == "/api/v1/audio/sinks":
             body = self._audio()
+        elif path == "/api/v1/clipboard":
+            body = self.api.clipboard_get()
         elif path == "/api/v1/screens":
             body = self._screens()
         elif path == "/api/v1/media/players":
@@ -468,6 +470,29 @@ class _Handler(BaseHTTPRequestHandler):
                     return
                 result = api.audio_set_sink(sink)
                 body = {"sink": sink, "result": result}
+            elif path == "/api/v1/audio/volume":
+                data = self._read_json_body()
+                pct = data.get("pct")
+                if pct is None:
+                    self._err(400, "body needs {pct: 0..150}")
+                    self._audit(path, 400)
+                    return
+                result = api.audio_set_volume(pct)
+                body = {"pct": pct, "result": result}
+            elif path == "/api/v1/audio/mute":
+                data = self._read_json_body()
+                state = (data.get("state") or "toggle").strip()
+                result = api.audio_set_mute(state)
+                body = {"state": state, "result": result}
+            elif path == "/api/v1/clipboard":
+                data = self._read_json_body()
+                text = data.get("text")
+                if text is None:
+                    self._err(400, "body needs {text: ...}")
+                    self._audit(path, 400)
+                    return
+                result = api.clipboard_set(text)
+                body = {"chars": len(text), "result": result}
             elif path.startswith("/api/v1/niri/cmd/"):
                 cmd = path[len("/api/v1/niri/cmd/"):]
                 output = self._parse_qs().get("output") or None
@@ -878,7 +903,12 @@ class _Handler(BaseHTTPRequestHandler):
     def _audio(self) -> dict:
         sinks, err = self.api.audio_sinks()
         default, err2 = self.api.audio_default_sink()
-        return {"sinks": sinks, "default": default, "error": err or err2}
+        return {
+            "sinks": sinks,
+            "default": default,
+            "master": self.api.audio_master(),
+            "error": err or err2,
+        }
 
     def _screens(self) -> dict:
         outputs, err = self.api.niri_outputs()

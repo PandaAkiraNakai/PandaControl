@@ -23,7 +23,8 @@ públicos.
 | `GET /api/v1/services` | failed + watch + manageable |
 | `GET /api/v1/logs?priority=err&n=30` | journalctl |
 | `GET /api/v1/metrics?range=1h\|6h\|24h` | histórico SQLite |
-| `GET /api/v1/audio/sinks` | pactl, sinks + default |
+| `GET /api/v1/audio/sinks` | pactl, sinks + default + `master` (volumen % / mute) |
+| `GET /api/v1/clipboard` | texto del portapapeles (wl-paste) |
 | `GET /api/v1/screens` | niri outputs |
 | `GET /api/v1/media/players` + `/{player}/status` | playerctl/MPRIS |
 | `GET /api/v1/net/neighbors` | ip neigh + gateway |
@@ -43,6 +44,12 @@ botones laterales atrás/adelante y scroll) y el teclado vía `wtype` (teclas
 especiales, atajos y texto libre). Endpoints POST: `/api/v1/input/mouse/move`,
 `/click`, `/scroll`, `/stream` (deltas en streaming) y `/api/v1/input/key`,
 `/api/v1/input/type`.
+
+El portapapeles del PC se sincroniza vía `wl-clipboard`:
+`POST /api/v1/clipboard {text}` escribe (wl-copy) y `GET /api/v1/clipboard`
+lee (wl-paste). El volumen maestro del sink por defecto se controla con
+`POST /api/v1/audio/volume {pct: 0..150}` y
+`POST /api/v1/audio/mute {state: on|off|toggle}` (vía `pactl`).
 
 ## Inventario (después de instalar)
 

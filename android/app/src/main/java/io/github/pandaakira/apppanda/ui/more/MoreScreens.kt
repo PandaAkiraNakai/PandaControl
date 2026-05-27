@@ -29,6 +29,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -40,6 +41,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -731,6 +733,58 @@ fun MediaScreen(app: PandaApp) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+
+            // Volumen maestro del sink por defecto: slider + mute. El slider
+            // usa estado local (sliderVol) para que arrastrar sea fluido y solo
+            // manda el POST al soltar (onValueChangeFinished); -1f = "todavía no
+            // tocado", así toma el valor real que llega del backend.
+            audio?.master?.let { master ->
+                item {
+                    val accent = LocalPandaColors.current.magenta
+                    val muted = master.muted == true
+                    var sliderVol by remember(master.volumePct, master.muted) {
+                        mutableStateOf((master.volumePct ?: 0).toFloat())
+                    }
+                    PandaCard(title = "VOLUMEN", accent = accent) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = {
+                                exec.run(if (muted) "Activar sonido" else "Silenciar") {
+                                    it.setMute("toggle")
+                                }
+                                scope.launch {
+                                    kotlinx.coroutines.delay(300); audioRefresh++
+                                }
+                            }) {
+                                Text(
+                                    if (muted) "🔇" else "🔊",
+                                    style = MaterialTheme.typography.titleLarge,
+                                )
+                            }
+                            Slider(
+                                value = sliderVol,
+                                onValueChange = { sliderVol = it },
+                                onValueChangeFinished = {
+                                    exec.run("Volumen ${sliderVol.toInt()}%") {
+                                        it.setVolume(sliderVol.toInt())
+                                    }
+                                },
+                                valueRange = 0f..150f,
+                                enabled = !muted && !exec.busy,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                "${sliderVol.toInt()}%",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = if (muted) MaterialTheme.colorScheme.onSurfaceVariant
+                                        else accent,
+                                modifier = Modifier.width(52.dp),
+                                textAlign = TextAlign.End,
+                            )
+                        }
+                    }
+                }
+            }
+
             audio?.error?.let { item { ErrorCard(it) } }
             val sinks = audio?.sinks
             if (sinks.isNullOrEmpty()) {

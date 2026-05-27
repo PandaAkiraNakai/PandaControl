@@ -41,8 +41,8 @@ PC; si no, no existe para nadie más.
 |---|---|
 | **Status** | CPU, RAM, disco, red, temperaturas, GPUs y estado SMART en vivo. |
 | **Trends** | Gráficas históricas 1h / 6h / 24h, dibujadas nativamente en Canvas. |
-| **Media** | Control MPRIS (play/pausa, seek ±15s, fullscreen del video), cambiar el sink de audio, prender/apagar pantallas (DPMS), lanzar apps GUI, lanzar juegos de Steam y comandos del WM `niri` desde una whitelist estricta. |
-| **Control** | Mouse y teclado remotos: un **touchpad** que mueve el cursor por deltas, clic izquierdo/medio/derecho, scroll de dos dedos y swipe horizontal de dos dedos para navegar atrás/adelante, teclas especiales y atajos (Esc, Tab, flechas, Ctrl+C/V/Z, Alt+Tab, etc.) y escritura de texto libre. Mouse vía `ydotool`, teclado vía `wtype`. |
+| **Media** | Control MPRIS (play/pausa, seek ±15s, fullscreen del video), **volumen maestro del sistema + silenciar** (slider, vía `pactl`), cambiar el sink de audio, prender/apagar pantallas (DPMS), lanzar apps GUI, lanzar juegos de Steam y comandos del WM `niri` desde una whitelist estricta. |
+| **Control** | Mouse y teclado remotos: un **touchpad** que mueve el cursor por deltas, clic izquierdo/medio/derecho, scroll de dos dedos y swipe horizontal de dos dedos para navegar atrás/adelante, teclas especiales y atajos (Esc, Tab, flechas, Ctrl+C/V/Z, Alt+Tab, etc.), escritura de texto libre y **portapapeles bidireccional** (traer del PC / enviar al PC, vía `wl-clipboard`). Mouse vía `ydotool`, teclado vía `wtype`. |
 | **Sistema** | Apagar / reiniciar / suspender / bloquear (con confirmación), listar y matar procesos, gestionar servicios (start/stop/restart), ver logs de `journalctl`, revisar y aplicar actualizaciones (`checkupdates`), ver vecinos de la LAN y consultar tus VPS por SSH. |
 | **Archivos** | Listar, descargar y subir archivos de los directorios que tú compartas. |
 | **Temas** | Cambiar el look completo de la app: cada tema es un paquete que define **colores, fuente, estilo de iconos, formas/bordes y fondos opcionales** (imágenes de la misma carpeta; si hay varias, eliges con qué wallpaper aplicar el tema). Los temas viven como archivos `*.json` en una carpeta del PC (`[themes].dir`); la app los lista y aplica al vuelo. Para agregar un tema basta dejar un `.json` nuevo — no hay que recompilar. Incluye *Cyberpunk* (default), *Synthwave*, *Matrix*, *Nord* y *Soft* (AMOLED). |
@@ -92,10 +92,11 @@ PC; si no, no existe para nadie más.
 - **Tailscale** instalado y conectado a tu tailnet.
 - *Opcionales*, según las funciones que quieras usar: `lm_sensors` (temps),
   `smartmontools` (SMART), `pacman-contrib` (`checkupdates`), `pactl`
-  (audio), `niri` (control del WM), `playerctl` (MPRIS), `wtype` (teclado /
-  inyección de teclas), `ydotool` (mouse) y `polkit` (acciones que requieren
-  privilegios). El daemon arranca igual aunque falte cualquiera de estos;
-  solo se desactiva la función correspondiente.
+  (audio: sinks + volumen/mute), `niri` (control del WM), `playerctl` (MPRIS),
+  `wtype` (teclado / inyección de teclas), `ydotool` (mouse), `wl-clipboard`
+  (portapapeles) y `polkit` (acciones que requieren privilegios). El daemon
+  arranca igual aunque falte cualquiera de estos; solo se desactiva la función
+  correspondiente.
 - *Para el módulo Control* (mouse): `ydotool` con su daemon `ydotoold`
   corriendo. La forma cómoda es como servicio de usuario:
   `systemctl --user enable --now ydotoold`. El daemon crea su socket en
@@ -355,7 +356,8 @@ GET  /api/v1/processes?sort=cpu|ram&limit=N
 GET  /api/v1/services
 GET  /api/v1/logs?priority=err&n=30
 GET  /api/v1/metrics?range=1h|6h|24h
-GET  /api/v1/audio/sinks
+GET  /api/v1/audio/sinks   (incluye master: volumen % + mute del sink default)
+GET  /api/v1/clipboard     (texto del portapapeles del PC)
 GET  /api/v1/screens
 GET  /api/v1/media/players  ·  /media/{player}/status
 GET  /api/v1/net/neighbors
@@ -371,6 +373,9 @@ POST /api/v1/processes/{pid}/kill                   X-Confirm: true
 POST /api/v1/services/{unit}/{start|stop|restart}   X-Confirm: true
 POST /api/v1/updates/apply                          X-Confirm: true
 POST /api/v1/audio/sink            {sink: "..."}
+POST /api/v1/audio/volume          {pct: 0..150}
+POST /api/v1/audio/mute            {state: "on"|"off"|"toggle"}
+POST /api/v1/clipboard             {text: "..."}      (escribe al portapapeles)
 POST /api/v1/screens/{output}/{on|off}
 POST /api/v1/screens/dpms/{on|off}
 POST /api/v1/niri/cmd/{cmd}[?output=NAME]
@@ -421,5 +426,5 @@ POST /api/v1/sudo/{rid}/decision   {approve: bool}    (huella en la app)
 MIT. Ver [LICENSE](LICENSE).
 ```
 <!-- profile-excerpt -->
-**Panel Android + backend Python** para controlar tu PC Linux desde el celu vía **Tailscale**. Kotlin/Compose con tema cyberpunk, Ktor 3 + SSE para push en vivo, ForegroundService para notifs en background. Daemon stdlib que expone REST/SSE bajo polkit narrow-scope: poder, kill, services, audio sinks (pactl), pantallas niri + DPMS, MPRIS con seek±15/fullscreen, lanzar apps/juegos Steam, journal, updates `pacman`. Auth dual: identidad Tailscale (`tailscale whois`) o Bearer token. Cero servicios externos, cero telemetría. `// linux-control · phone-rig · tailnet-native`
+**Panel Android + backend Python** para controlar tu PC Linux desde el celu vía **Tailscale**. Kotlin/Compose con tema cyberpunk, Ktor 3 + SSE para push en vivo, ForegroundService para notifs en background. Daemon stdlib que expone REST/SSE bajo polkit narrow-scope: poder, kill, services, audio sinks + volumen/mute (pactl), portapapeles (wl-clipboard), pantallas niri + DPMS, MPRIS con seek±15/fullscreen, lanzar apps/juegos Steam, journal, updates `pacman`. Auth dual: identidad Tailscale (`tailscale whois`) o Bearer token. Cero servicios externos, cero telemetría. `// linux-control · phone-rig · tailnet-native`
 <!-- /profile-excerpt -->

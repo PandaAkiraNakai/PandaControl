@@ -157,9 +157,24 @@ data class AudioSink(
 )
 
 @Serializable
+data class AudioMaster(
+    @SerialName("volume_pct") val volumePct: Int? = null,
+    val muted: Boolean? = null,
+    val sink: String = "",
+    val error: String? = null,
+)
+
+@Serializable
 data class AudioResponse(
     val sinks: List<AudioSink>,
     val default: String = "",
+    val master: AudioMaster? = null,
+    val error: String? = null,
+)
+
+@Serializable
+data class ClipboardResponse(
+    val text: String = "",
     val error: String? = null,
 )
 

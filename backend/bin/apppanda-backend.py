@@ -764,6 +764,64 @@ def audio_default_sink() -> tuple[str, str | None]:
     return stdout.strip(), None
 
 
+def audio_master() -> dict:
+    """Volumen (promedio de canales) y mute del sink por defecto."""
+    default, err = audio_default_sink()
+    if err or not default:
+        return {"volume_pct": None, "muted": None, "sink": "", "error": err}
+    rc, stdout, stderr = _pactl_run(["-f", "json", "list", "sinks"])
+    if rc != 0:
+        return {"volume_pct": None, "muted": None, "sink": default,
+                "error": (stderr or stdout or f"exit {rc}")[:200]}
+    try:
+        data = json.loads(stdout)
+    except json.JSONDecodeError as e:
+        return {"volume_pct": None, "muted": None, "sink": default,
+                "error": f"JSON inválido: {e}"}
+    for s in data:
+        if s.get("name") != default:
+            continue
+        vals = []
+        for ch in (s.get("volume") or {}).values():
+            if isinstance(ch, dict):
+                pct = str(ch.get("value_percent", "")).rstrip("%").strip()
+                try:
+                    vals.append(float(pct))
+                except ValueError:
+                    pass
+        return {
+            "volume_pct": round(sum(vals) / len(vals)) if vals else None,
+            "muted": bool(s.get("mute")),
+            "sink": default,
+            "error": None,
+        }
+    return {"volume_pct": None, "muted": None, "sink": default,
+            "error": "sink por defecto no encontrado"}
+
+
+def audio_set_volume(pct: int) -> str:
+    """Fija el volumen del sink por defecto. Clampa a 0–150 %."""
+    try:
+        pct = max(0, min(150, int(pct)))
+    except (TypeError, ValueError):
+        return f"pct inválido: {pct!r}"
+    rc, _, stderr = _pactl_run(["set-sink-volume", "@DEFAULT_SINK@", f"{pct}%"])
+    if rc != 0:
+        return (stderr or f"exit {rc}")[:200]
+    return "ok"
+
+
+def audio_set_mute(state: str) -> str:
+    """state: on | off | toggle (mute del sink por defecto)."""
+    arg = {"on": "1", "off": "0", "toggle": "toggle"}.get(state)
+    if arg is None:
+        return f"estado inválido: {state}"
+    rc, _, stderr = _pactl_run(["set-sink-mute", "@DEFAULT_SINK@", arg])
+    if rc != 0:
+        return (stderr or f"exit {rc}")[:200]
+    return "ok"
+
+
 # ─── MPRIS (playerctl) ───────────────────────────────────────────────────────
 
 def _playerctl_env() -> dict:
@@ -811,6 +869,63 @@ def mpris_status(player: str) -> dict:
         if rc == 0:
             out[field] = stdout.strip()
     return out
+
+
+# ─── Portapapeles (wl-clipboard) ──────────────────────────────────────────────
+
+def _wayland_env() -> dict:
+    uid = os.getuid()
+    return {
+        **os.environ,
+        "XDG_RUNTIME_DIR": f"/run/user/{uid}",
+        "WAYLAND_DISPLAY": "wayland-1",
+    }
+
+
+def clipboard_get(max_bytes: int = 100_000) -> dict:
+    """Lee el portapapeles del PC vía wl-paste. Solo texto UTF-8."""
+    try:
+        proc = subprocess.run(
+            ["wl-paste", "--no-newline", "--type", "text"],
+            capture_output=True, timeout=5, env=_wayland_env(),
+        )
+    except FileNotFoundError:
+        return {"text": "", "error": "wl-paste no instalado (wl-clipboard)"}
+    except subprocess.TimeoutExpired:
+        return {"text": "", "error": "timeout"}
+    if proc.returncode != 0:
+        err = (proc.stderr.decode("utf-8", "replace") or "").strip().lower()
+        # wl-paste sale != 0 cuando el portapapeles está vacío: no es error.
+        if not err or "empty" in err or "no selection" in err:
+            return {"text": "", "error": None}
+        return {"text": "", "error": err[:200]}
+    try:
+        text = proc.stdout[:max_bytes].decode("utf-8")
+    except UnicodeDecodeError:
+        return {"text": "", "error": "el portapapeles no es texto UTF-8"}
+    return {"text": text, "error": None}
+
+
+def clipboard_set(text: str) -> str:
+    """Escribe texto al portapapeles del PC vía wl-copy.
+
+    wl-copy forkea un proceso que sigue vivo para servir el contenido; con
+    stdout/stderr a DEVNULL evitamos que subprocess.run quede esperando EOF
+    en el pipe que el hijo mantiene abierto.
+    """
+    try:
+        proc = subprocess.run(
+            ["wl-copy"], input=text.encode("utf-8"),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            timeout=5, env=_wayland_env(),
+        )
+    except FileNotFoundError:
+        return "wl-copy no instalado (wl-clipboard)"
+    except subprocess.TimeoutExpired:
+        return "timeout"
+    if proc.returncode != 0:
+        return f"exit {proc.returncode}"
+    return "ok"
 
 
 # ─── Red ─────────────────────────────────────────────────────────────────────
@@ -1380,6 +1495,11 @@ def main() -> None:
             audio_sinks=audio_sinks,
             audio_default_sink=audio_default_sink,
             audio_set_sink=audio_set_sink,
+            audio_master=audio_master,
+            audio_set_volume=audio_set_volume,
+            audio_set_mute=audio_set_mute,
+            clipboard_get=clipboard_get,
+            clipboard_set=clipboard_set,
             mpris_players=mpris_players,
             mpris_status=mpris_status,
             mpris_action=mpris_action,
