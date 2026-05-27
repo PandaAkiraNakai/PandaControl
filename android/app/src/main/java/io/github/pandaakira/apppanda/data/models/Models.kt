@@ -270,10 +270,35 @@ data class FileEntry(
 data class FilesListResponse(
     val enabled: Boolean = true,
     @SerialName("dir_idx") val dirIdx: Int = 0,
+    val rel: String = "",
     val path: String = "",
     val files: List<FileEntry> = emptyList(),
     val error: String? = null,
 )
+
+/** Bodies de las acciones de gestión de archivos (kotlinx no serializa
+ *  mapas heterogéneos, así que cada acción usa su propio DTO). */
+@Serializable
+data class FilesOpReq(val dir: Int, val rel: String, val name: String)
+
+@Serializable
+data class FilesRenameReq(
+    val dir: Int,
+    val rel: String,
+    val name: String,
+    @SerialName("new_name") val newName: String,
+)
+
+@Serializable
+data class FilesDeleteReq(
+    val dir: Int,
+    val rel: String,
+    val name: String,
+    val recursive: Boolean,
+)
+
+@Serializable
+data class FilesMkdirReq(val dir: Int, val rel: String, val name: String)
 
 @Serializable
 data class FileUploadResponse(

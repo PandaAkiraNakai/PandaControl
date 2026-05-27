@@ -6,8 +6,12 @@ import io.github.pandaakira.apppanda.data.models.AudioResponse
 import io.github.pandaakira.apppanda.data.models.ClipboardResponse
 import io.github.pandaakira.apppanda.data.models.DiskResponse
 import io.github.pandaakira.apppanda.data.models.FileUploadResponse
+import io.github.pandaakira.apppanda.data.models.FilesDeleteReq
 import io.github.pandaakira.apppanda.data.models.FilesIndexResponse
 import io.github.pandaakira.apppanda.data.models.FilesListResponse
+import io.github.pandaakira.apppanda.data.models.FilesMkdirReq
+import io.github.pandaakira.apppanda.data.models.FilesOpReq
+import io.github.pandaakira.apppanda.data.models.FilesRenameReq
 import io.github.pandaakira.apppanda.data.models.GamesResponse
 import io.github.pandaakira.apppanda.data.models.GpusResponse
 import io.github.pandaakira.apppanda.data.models.HealthResponse
@@ -247,27 +251,48 @@ class PandaApi(
     suspend fun filesIndex(): FilesIndexResponse =
         client.get(url("/api/v1/files")).body()
 
-    suspend fun filesList(dirIdx: Int): FilesListResponse =
-        client.get(url("/api/v1/files?dir=$dirIdx")).body()
+    suspend fun filesList(dirIdx: Int, rel: String = ""): FilesListResponse {
+        val r = java.net.URLEncoder.encode(rel, "UTF-8")
+        return client.get(url("/api/v1/files?dir=$dirIdx&rel=$r")).body()
+    }
 
     /** Devuelve el HttpResponse para que el caller streamee el body al
      *  ContentResolver del MediaStore (no carga el archivo en memoria). */
-    suspend fun filesDownload(dirIdx: Int, name: String): HttpResponse {
+    suspend fun filesDownload(dirIdx: Int, rel: String, name: String): HttpResponse {
+        val r = java.net.URLEncoder.encode(rel, "UTF-8")
         val encoded = java.net.URLEncoder.encode(name, "UTF-8")
-        return client.get(url("/api/v1/files/download?dir=$dirIdx&name=$encoded"))
+        return client.get(url("/api/v1/files/download?dir=$dirIdx&rel=$r&name=$encoded"))
     }
 
     /** Sube bytes con header X-Filename y Content-Length para que el daemon
-     *  los stree al disco. content-type octet-stream. */
-    suspend fun filesUpload(name: String, bytes: ByteArray): FileUploadResponse {
+     *  los stree al disco. X-Dir/X-Rel eligen la carpeta destino. */
+    suspend fun filesUpload(
+        name: String, bytes: ByteArray, dirIdx: Int = 0, rel: String = "",
+    ): FileUploadResponse {
         val encoded = java.net.URLEncoder.encode(name, "UTF-8")
+        val r = java.net.URLEncoder.encode(rel, "UTF-8")
         return client.post(url("/api/v1/files/upload")) {
             header("X-Filename", encoded)
+            header("X-Dir", dirIdx.toString())
+            header("X-Rel", r)
             header(HttpHeaders.ContentLength, bytes.size.toString())
             contentType(ContentType.Application.OctetStream)
             setBody(bytes)
         }.body()
     }
+
+    suspend fun filesMkdir(dirIdx: Int, rel: String, name: String) =
+        action("/api/v1/files/mkdir", body = FilesMkdirReq(dirIdx, rel, name))
+
+    suspend fun filesRename(dirIdx: Int, rel: String, name: String, newName: String) =
+        action("/api/v1/files/rename", body = FilesRenameReq(dirIdx, rel, name, newName))
+
+    suspend fun filesDelete(dirIdx: Int, rel: String, name: String, recursive: Boolean) =
+        action("/api/v1/files/delete", confirm = true,
+            body = FilesDeleteReq(dirIdx, rel, name, recursive))
+
+    suspend fun filesOpen(dirIdx: Int, rel: String, name: String) =
+        action("/api/v1/files/open", body = FilesOpReq(dirIdx, rel, name))
 
     // ─── POST (acciones) ──────────────────────────────────────────────────
 

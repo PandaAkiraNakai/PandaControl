@@ -12,9 +12,12 @@ import android.provider.MediaStore
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,15 +30,16 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -67,20 +71,56 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.utils.io.jvm.javaio.toInputStream
 
-private enum class Tab { Recibir, Enviar }
-
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FilesScreen(app: PandaApp) {
     val api by app.repository.api.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var tab by remember { mutableStateOf(Tab.Recibir) }
     var index by remember { mutableStateOf<FilesIndexResponse?>(null) }
     var indexError by remember { mutableStateOf<String?>(null) }
+
+    // Navegación: qué shared_dir y qué subcarpeta (rel) dentro de él.
+    var dirIdx by remember { mutableIntStateOf(0) }
+    var rel by remember { mutableStateOf("") }
+    var listing by remember { mutableStateOf<FilesListResponse?>(null) }
+    var listError by remember { mutableStateOf<String?>(null) }
+    var refresh by remember { mutableIntStateOf(0) }
+    var working by remember { mutableStateOf(false) }
+
     var banner by remember { mutableStateOf<String?>(null) }
     var bannerColor by remember { mutableStateOf(BuiltInPalette.green) }
-    var working by remember { mutableStateOf(false) }
+    val okColor = LocalPandaColors.current.green
+    val errColor = MaterialTheme.colorScheme.error
+    fun setBanner(text: String, color: Color = okColor) {
+        banner = text; bannerColor = color
+    }
+
+    // Diálogos
+    var actionTarget by remember { mutableStateOf<FileEntry?>(null) }
+    var renameTarget by remember { mutableStateOf<FileEntry?>(null) }
+    var deleteTarget by remember { mutableStateOf<FileEntry?>(null) }
+    var showNewFolder by remember { mutableStateOf(false) }
+
+    val pickLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val client = api ?: return@rememberLauncherForActivityResult
+        working = true
+        scope.launch {
+            val res = try {
+                uploadFromPhone(context, client, uri, index?.maxUploadMb ?: 500, dirIdx, rel)
+            } catch (e: Exception) {
+                false to ("error: " + (e.message?.take(80) ?: e::class.simpleName))
+            }
+            working = false
+            if (res.first) setBanner("✓ ${res.second}", okColor)
+            else setBanner("✗ ${res.second}", errColor)
+            refresh++
+        }
+    }
 
     LaunchedEffect(api) {
         val current = api ?: return@LaunchedEffect
@@ -92,265 +132,337 @@ fun FilesScreen(app: PandaApp) {
         }
     }
 
-    fun setBanner(text: String, color: Color = BuiltInPalette.green) {
-        banner = text
-        bannerColor = color
+    LaunchedEffect(api, dirIdx, rel, refresh, index?.dirs?.size) {
+        val current = api ?: return@LaunchedEffect
+        if (index == null || index!!.dirs.isEmpty()) return@LaunchedEffect
+        try {
+            listing = withContext(Dispatchers.IO) { current.filesList(dirIdx, rel) }
+            listError = listing?.error
+        } catch (e: Exception) {
+            listError = e.message ?: e::class.simpleName
+        }
+    }
+
+    fun descend(name: String) { rel = if (rel.isEmpty()) name else "$rel/$name" }
+    fun goTo(target: String) { rel = target }
+    fun goUp() { rel = rel.substringBeforeLast('/', "") }
+
+    fun fileAction(label: String, color: Color, block: suspend (PandaApi) -> io.github.pandaakira.apppanda.data.models.ActionResult) {
+        val client = api ?: return
+        working = true
+        scope.launch {
+            val r = try {
+                withContext(Dispatchers.IO) { block(client) }
+            } catch (e: Exception) {
+                working = false
+                setBanner("✗ $label · ${e.message?.take(80) ?: e::class.simpleName}", errColor)
+                return@launch
+            }
+            working = false
+            if (r.ok) setBanner("✓ $label", okColor)
+            else setBanner("✗ $label · ${r.result.ifBlank { r.error.orEmpty() }}", errColor)
+            refresh++
+        }
     }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        ScreenHeader(
-            "ARCHIVOS",
-            (index?.uploadTo?.takeIf { it.isNotBlank() } ?: "")
-                .let { if (it.isNotBlank()) "Upload → $it" else "transferencia bidireccional" },
-        )
+        ScreenHeader("ARCHIVOS", listing?.path ?: "navegador de archivos del PC")
         Spacer(Modifier.height(8.dp))
 
-        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-            Tab.entries.forEachIndexed { i, t ->
-                SegmentedButton(
-                    selected = tab == t,
-                    onClick = { tab = t },
-                    shape = SegmentedButtonDefaults.itemShape(i, Tab.entries.size),
-                ) { Text(t.name) }
+        indexError?.let { ErrorCard(it); Spacer(Modifier.height(8.dp)) }
+
+        // Selector de shared_dir (si hay varios)
+        index?.dirs?.takeIf { it.isNotEmpty() }?.let { dirs ->
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                dirs.forEach { d ->
+                    val selected = dirIdx == d.idx
+                    OutlinedButton(
+                        onClick = { dirIdx = d.idx; rel = "" },
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = if (selected) LocalPandaColors.current.yellow
+                                else MaterialTheme.colorScheme.onSurface,
+                        ),
+                    ) { Text(d.label.ifBlank { d.path.substringAfterLast('/') }) }
+                }
             }
-        }
-
-        Spacer(Modifier.height(12.dp))
-
-        indexError?.let {
-            ErrorCard(it)
             Spacer(Modifier.height(8.dp))
         }
 
+        // Breadcrumb
+        Breadcrumb(rel = rel, onCrumb = ::goTo)
+        Spacer(Modifier.height(8.dp))
+
+        // Acciones de la carpeta actual
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Button(
+                onClick = {
+                    try { pickLauncher.launch(arrayOf("*/*")) }
+                    catch (e: Exception) { setBanner("selector: ${e.message?.take(60)}", errColor) }
+                },
+                enabled = !working && api != null,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = LocalPandaColors.current.green.copy(alpha = 0.25f),
+                    contentColor = LocalPandaColors.current.green,
+                ),
+            ) { Text(if (working) "…" else "⬆ Subir aquí") }
+            Button(
+                onClick = { showNewFolder = true },
+                enabled = !working && api != null,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = LocalPandaColors.current.cyan.copy(alpha = 0.25f),
+                    contentColor = LocalPandaColors.current.cyan,
+                ),
+            ) { Text("＋ Carpeta") }
+        }
+
+        Spacer(Modifier.height(8.dp))
         banner?.let {
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
+                Modifier.fillMaxWidth()
                     .clip(RoundedCornerShape(LocalPandaShapes.current.cornerSmall))
                     .background(MaterialTheme.colorScheme.surface)
                     .border(LocalPandaShapes.current.border, bannerColor, RoundedCornerShape(LocalPandaShapes.current.cornerSmall))
+                    .clickable { banner = null }
                     .padding(12.dp),
-            ) {
-                Text(
-                    it,
-                    color = bannerColor,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
+            ) { Text(it, color = bannerColor, style = MaterialTheme.typography.bodyMedium) }
             Spacer(Modifier.height(8.dp))
         }
 
-        when (tab) {
-            Tab.Recibir -> RecibirTab(
-                app = app,
-                index = index,
-                working = working,
-                onWorking = { working = it },
-                onBanner = ::setBanner,
-            )
-            Tab.Enviar -> EnviarTab(
-                app = app,
-                index = index,
-                working = working,
-                onWorking = { working = it },
-                onBanner = ::setBanner,
-            )
-        }
-    }
-}
-
-@Composable
-private fun RecibirTab(
-    app: PandaApp,
-    index: FilesIndexResponse?,
-    working: Boolean,
-    onWorking: (Boolean) -> Unit,
-    onBanner: (String, Color) -> Unit,
-) {
-    val api by app.repository.api.collectAsState()
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-
-    var dirIdx by remember { mutableIntStateOf(0) }
-    var listing by remember { mutableStateOf<FilesListResponse?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var refresh by remember { mutableIntStateOf(0) }
-    val errorColor = MaterialTheme.colorScheme.error
-    val okColor = LocalPandaColors.current.green
-
-    LaunchedEffect(api, dirIdx, refresh, index?.dirs?.size) {
-        val current = api ?: return@LaunchedEffect
-        if (index == null || index.dirs.isEmpty()) return@LaunchedEffect
-        try {
-            listing = withContext(Dispatchers.IO) { current.filesList(dirIdx) }
-            error = null
-        } catch (e: Exception) {
-            error = e.message ?: e::class.simpleName
-        }
-    }
-
-    if (index?.dirs?.isNotEmpty() == true) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        LazyColumn(
+            contentPadding = PaddingValues(vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxSize(),
         ) {
-            index.dirs.forEach { d ->
-                val selected = dirIdx == d.idx
-                OutlinedButton(
-                    onClick = { dirIdx = d.idx },
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = if (selected) LocalPandaColors.current.yellow
-                            else MaterialTheme.colorScheme.onSurface,
-                    ),
-                ) { Text(d.label.ifBlank { d.path.substringAfterLast('/') }) }
-            }
-        }
-    }
-
-    LazyColumn(
-        contentPadding = PaddingValues(vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        error?.let { item { ErrorCard(it) } }
-        listing?.let { l ->
-            if (l.files.isEmpty()) {
+            // Fila "subir un nivel"
+            if (rel.isNotEmpty()) {
                 item {
-                    Text(
-                        "(vacío)",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(16.dp),
-                    )
+                    UpRow(enabled = !working) { goUp() }
                 }
-            } else {
-                items(l.files) { file ->
-                    FileRow(
-                        file = file,
-                        enabled = !working,
-                        onTap = {
-                            val client = api ?: return@FileRow
-                            onWorking(true)
+            }
+            listError?.let { item { ErrorCard(it) } }
+            listing?.takeIf { it.error == null }?.let { l ->
+                if (l.files.isEmpty()) {
+                    item {
+                        Text("(carpeta vacía)",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(16.dp))
+                    }
+                } else {
+                    items(l.files) { file ->
+                        FileRow(
+                            file = file,
+                            enabled = !working,
+                            onTap = {
+                                if (file.isDir) descend(file.name) else actionTarget = file
+                            },
+                            onLongPress = { actionTarget = file },
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // ─── Diálogo de acciones por entrada ───────────────────────────────────
+    actionTarget?.let { f ->
+        AlertDialog(
+            onDismissRequest = { actionTarget = null },
+            title = { Text(f.name, style = MaterialTheme.typography.titleMedium) },
+            text = {
+                Column {
+                    if (!f.isDir) {
+                        DialogAction("⬇  Descargar al celular") {
+                            actionTarget = null
+                            val client = api ?: return@DialogAction
+                            working = true
                             scope.launch {
-                                val ok = downloadToPhone(
-                                    context, client, l.dirIdx, file.name,
-                                )
-                                onWorking(false)
-                                if (ok == null) {
-                                    onBanner(
-                                        "✓ ${file.name} guardado en Downloads",
-                                        okColor,
-                                    )
-                                } else {
-                                    onBanner("✗ error: $ok", errorColor)
-                                }
-                                refresh++
+                                val err = downloadToPhone(context, client, dirIdx, rel, f.name)
+                                working = false
+                                if (err == null) setBanner("✓ ${f.name} en Downloads", okColor)
+                                else setBanner("✗ $err", errColor)
                             }
-                        },
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun EnviarTab(
-    app: PandaApp,
-    index: FilesIndexResponse?,
-    working: Boolean,
-    onWorking: (Boolean) -> Unit,
-    onBanner: (String, Color) -> Unit,
-) {
-    val api by app.repository.api.collectAsState()
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val errorColor = MaterialTheme.colorScheme.error
-    val okColor = LocalPandaColors.current.green
-
-    // OpenDocument (ACTION_OPEN_DOCUMENT) va directo a DocumentsUI/SAF y NO
-    // requiere permisos de runtime: devuelve un content:// Uri legible.
-    // Usamos OpenDocument en vez de GetContent a propósito: en varias ROMs
-    // (HONOR/EMUI) el Photo Picker intercepta ACTION_GET_CONTENT y, si el mime
-    // no es foto/vídeo, intenta reenviar a DocumentsUI con un intent que falla
-    // por SecurityException → el proceso del picker crashea y parece que la app
-    // se cerró. ACTION_OPEN_DOCUMENT esquiva el Photo Picker por completo.
-    val pickLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument(),
-    ) { uri: Uri? ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        val client = api ?: return@rememberLauncherForActivityResult
-        onWorking(true)
-        scope.launch {
-            val res = try {
-                uploadFromPhone(context, client, uri, index?.maxUploadMb ?: 500)
-            } catch (e: Exception) {
-                false to ("error: " + (e.message?.take(80) ?: e::class.simpleName))
-            }
-            onWorking(false)
-            if (res.first) {
-                onBanner("✓ ${res.second}", okColor)
-            } else {
-                onBanner("✗ ${res.second}", errorColor)
-            }
-        }
-    }
-
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        PandaCard(title = "DESTINO", accent = LocalPandaColors.current.cyan) {
-            Text(
-                index?.uploadTo?.ifBlank { "(sin shared_dir)" } ?: "—",
-                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "Máximo: ${index?.maxUploadMb ?: "?"} MB",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Button(
-            onClick = {
-                try {
-                    pickLauncher.launch(arrayOf("*/*"))
-                } catch (e: Exception) {
-                    onBanner(
-                        "selector: ${e.message?.take(80) ?: e::class.simpleName}",
-                        errorColor,
-                    )
+                        }
+                    }
+                    DialogAction("↗  Abrir en el PC") {
+                        actionTarget = null
+                        fileAction("Abrir ${f.name}", okColor) { it.filesOpen(dirIdx, rel, f.name) }
+                    }
+                    DialogAction("✎  Renombrar") {
+                        actionTarget = null; renameTarget = f
+                    }
+                    DialogAction("🗑  Borrar", color = errColor) {
+                        actionTarget = null; deleteTarget = f
+                    }
                 }
             },
-            enabled = !working && api != null,
-            modifier = Modifier.fillMaxWidth().height(56.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = LocalPandaColors.current.green.copy(alpha = 0.3f),
-                contentColor = LocalPandaColors.current.green,
-            ),
-        ) {
-            Text(if (working) "Subiendo…" else "Elegir archivo del celular")
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { actionTarget = null }) { Text("Cerrar") } },
+            containerColor = MaterialTheme.colorScheme.surface,
+        )
+    }
+
+    // ─── Nueva carpeta ──────────────────────────────────────────────────────
+    if (showNewFolder) {
+        var name by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showNewFolder = false },
+            title = { Text("Nueva carpeta") },
+            text = {
+                OutlinedTextField(
+                    value = name, onValueChange = { name = it },
+                    singleLine = true, placeholder = { Text("nombre") },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = name.isNotBlank(),
+                    onClick = {
+                        val n = name.trim(); showNewFolder = false
+                        fileAction("Carpeta $n", okColor) { it.filesMkdir(dirIdx, rel, n) }
+                    },
+                ) { Text("Crear") }
+            },
+            dismissButton = { TextButton(onClick = { showNewFolder = false }) { Text("Cancelar") } },
+            containerColor = MaterialTheme.colorScheme.surface,
+        )
+    }
+
+    // ─── Renombrar ────────────────────────────────────────────────────────
+    renameTarget?.let { f ->
+        var newName by remember { mutableStateOf(f.name) }
+        AlertDialog(
+            onDismissRequest = { renameTarget = null },
+            title = { Text("Renombrar") },
+            text = {
+                OutlinedTextField(
+                    value = newName, onValueChange = { newName = it }, singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = newName.isNotBlank() && newName != f.name,
+                    onClick = {
+                        val nn = newName.trim(); renameTarget = null
+                        fileAction("Renombrar → $nn", okColor) {
+                            it.filesRename(dirIdx, rel, f.name, nn)
+                        }
+                    },
+                ) { Text("Renombrar") }
+            },
+            dismissButton = { TextButton(onClick = { renameTarget = null }) { Text("Cancelar") } },
+            containerColor = MaterialTheme.colorScheme.surface,
+        )
+    }
+
+    // ─── Confirmar borrado ──────────────────────────────────────────────────
+    deleteTarget?.let { f ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text("¿Borrar ${if (f.isDir) "carpeta" else "archivo"}?") },
+            text = {
+                Text(
+                    if (f.isDir) "Se borrará «${f.name}» y todo su contenido. No se puede deshacer."
+                    else "Se borrará «${f.name}». No se puede deshacer.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    deleteTarget = null
+                    fileAction("Borrar ${f.name}", okColor) {
+                        it.filesDelete(dirIdx, rel, f.name, recursive = f.isDir)
+                    }
+                }) { Text("Borrar", color = errColor) }
+            },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancelar") } },
+            containerColor = MaterialTheme.colorScheme.surface,
+        )
+    }
+}
+
+@Composable
+private fun DialogAction(label: String, color: Color = MaterialTheme.colorScheme.onSurface, onClick: () -> Unit) {
+    TextButton(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(label, color = color, modifier = Modifier.fillMaxWidth())
+    }
+}
+
+@Composable
+private fun Breadcrumb(rel: String, onCrumb: (String) -> Unit) {
+    val crumbs = buildList {
+        add("⌂" to "")
+        if (rel.isNotEmpty()) {
+            var acc = ""
+            rel.split('/').forEach { part ->
+                acc = if (acc.isEmpty()) part else "$acc/$part"
+                add(part to acc)
+            }
+        }
+    }
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        crumbs.forEachIndexed { i, (label, target) ->
+            if (i > 0) Text(" / ", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                label,
+                style = MaterialTheme.typography.labelLarge,
+                color = if (i == crumbs.lastIndex) LocalPandaColors.current.yellow
+                        else LocalPandaColors.current.cyan,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(LocalPandaShapes.current.cornerSmall))
+                    .clickable { onCrumb(target) }
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
+            )
         }
     }
 }
 
+@Composable
+private fun UpRow(enabled: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(LocalPandaShapes.current.corner))
+            .clickable(enabled = enabled) { onClick() }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("📁  ..", style = MaterialTheme.typography.bodyMedium,
+            color = LocalPandaColors.current.cyan)
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FileRow(
     file: FileEntry,
     enabled: Boolean,
     onTap: () -> Unit,
+    onLongPress: () -> Unit,
 ) {
+    val accent = if (file.isDir) LocalPandaColors.current.yellow else LocalPandaColors.current.cyan
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(LocalPandaShapes.current.corner))
             .background(MaterialTheme.colorScheme.surface)
-            .border(LocalPandaShapes.current.border, LocalPandaColors.current.cyan.copy(alpha = 0.4f), RoundedCornerShape(LocalPandaShapes.current.corner))
-            .clickable(enabled = enabled) { onTap() }
+            .border(LocalPandaShapes.current.border, accent.copy(alpha = 0.4f), RoundedCornerShape(LocalPandaShapes.current.corner))
+            .combinedClickable(enabled = enabled, onClick = onTap, onLongClick = onLongPress)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Text(if (file.isDir) "📁" else "📄", modifier = Modifier.padding(end = 10.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 file.name,
@@ -358,12 +470,13 @@ private fun FileRow(
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                "${humanSize(file.size)} · ${humanMtime(file.mtime)}",
+                if (file.isDir) humanMtime(file.mtime)
+                else "${humanSize(file.size)} · ${humanMtime(file.mtime)}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Text("⬇", color = LocalPandaColors.current.cyan, style = MaterialTheme.typography.titleMedium)
+        Text(if (file.isDir) "›" else "⋮", color = accent, style = MaterialTheme.typography.titleMedium)
     }
 }
 
@@ -398,10 +511,11 @@ private suspend fun downloadToPhone(
     context: Context,
     api: PandaApi,
     dirIdx: Int,
+    rel: String,
     name: String,
 ): String? = withContext(Dispatchers.IO) {
     try {
-        val response = api.filesDownload(dirIdx, name)
+        val response = api.filesDownload(dirIdx, rel, name)
         if (response.status.value !in 200..299) {
             return@withContext "HTTP ${response.status.value}"
         }
@@ -449,12 +563,14 @@ private suspend fun downloadToPhone(
     }
 }
 
-/** Lee un Uri del ContentResolver y lo sube. Devuelve (ok, mensaje). */
+/** Lee un Uri del ContentResolver y lo sube a dirIdx/rel. Devuelve (ok, mensaje). */
 private suspend fun uploadFromPhone(
     context: Context,
     api: PandaApi,
     uri: Uri,
     maxMb: Int,
+    dirIdx: Int,
+    rel: String,
 ): Pair<Boolean, String> = withContext(Dispatchers.IO) {
     try {
         val resolver = context.contentResolver
@@ -477,7 +593,7 @@ private suspend fun uploadFromPhone(
         if (bytes.size.toLong() > maxBytes) {
             return@withContext false to "archivo > ${maxMb} MB"
         }
-        val res = api.filesUpload(displayName, bytes)
+        val res = api.filesUpload(displayName, bytes, dirIdx, rel)
         if (res.result == "ok") {
             true to "subido como ${res.savedAs ?: displayName}"
         } else {

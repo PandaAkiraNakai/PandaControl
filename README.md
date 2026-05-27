@@ -44,7 +44,7 @@ PC; si no, no existe para nadie más.
 | **Media** | Control MPRIS (play/pausa, seek ±15s, fullscreen del video), **volumen maestro del sistema + silenciar** (slider, vía `pactl`), cambiar el sink de audio, prender/apagar pantallas (DPMS), lanzar apps GUI, lanzar juegos de Steam y comandos del WM `niri` desde una whitelist estricta. |
 | **Control** | Mouse y teclado remotos: un **touchpad** que mueve el cursor por deltas, clic izquierdo/medio/derecho, scroll de dos dedos y swipe horizontal de dos dedos para navegar atrás/adelante, teclas especiales y atajos (Esc, Tab, flechas, Ctrl+C/V/Z, Alt+Tab, etc.), escritura de texto libre y **portapapeles bidireccional** (traer del PC / enviar al PC, vía `wl-clipboard`). Mouse vía `ydotool`, teclado vía `wtype`. |
 | **Sistema** | Apagar / reiniciar / suspender / bloquear (con confirmación), listar y matar procesos, gestionar servicios (start/stop/restart), ver logs de `journalctl`, revisar y aplicar actualizaciones (`checkupdates`), ver vecinos de la LAN y consultar tus VPS por SSH. |
-| **Archivos** | Listar, descargar y subir archivos de los directorios que tú compartas. |
+| **Archivos** | Gestor completo de los directorios que compartas: navegar subcarpetas (con breadcrumb), descargar al celular, subir a la carpeta actual, crear carpeta, renombrar, borrar (archivos y carpetas, con confirmación) y abrir cualquier archivo/carpeta en el PC con su app por defecto (`xdg-open`). Anti path-traversal: todo queda confinado al `shared_dir`. |
 | **Temas** | Cambiar el look completo de la app: cada tema es un paquete que define **colores, fuente, estilo de iconos, formas/bordes y fondos opcionales** (imágenes de la misma carpeta; si hay varias, eliges con qué wallpaper aplicar el tema). Los temas viven como archivos `*.json` en una carpeta del PC (`[themes].dir`); la app los lista y aplica al vuelo. Para agregar un tema basta dejar un `.json` nuevo — no hay que recompilar. Incluye *Cyberpunk* (default), *Synthwave*, *Matrix*, *Nord* y *Soft* (AMOLED). |
 | **Push del sistema** | Un `ForegroundService` mantiene el SSE vivo en segundo plano y dispara notificaciones nativas ante alertas con histéresis (CPU/RAM/disco/temps/GPU/carga), servicios caídos, sesiones nuevas, boot o salida de suspensión. |
 | **Aprobación de sudo remota** | Cuando tu PC necesita privilegios de root, el celular recibe una notificación urgente (con vibración y tono disparados a mano para sobrevivir al modo silencioso de OEMs como Honor o Xiaomi). El modal muestra el comando que se va a ejecutar; para **aprobar** te pide confirmar tu identidad con **huella** (o el PIN/patrón del dispositivo), mientras que rechazar es directo. |
@@ -364,7 +364,7 @@ GET  /api/v1/net/neighbors
 GET  /api/v1/vps  ·  /vps/{alias}/summary
 GET  /api/v1/games  ·  /apps  ·  /updates
 GET  /api/v1/themes  ·  /themes/image?name=FILE
-GET  /api/v1/files  ·  /files/download?dir=N&name=FILE
+GET  /api/v1/files[?dir=N&rel=SUBPATH]  ·  /files/download?dir=N&rel=SUBPATH&name=FILE
 GET  /api/v1/events   (SSE: metric_tick / alert / service_failed /
                        session_new / boot / resume / sudo_request)
 
@@ -388,7 +388,11 @@ POST /api/v1/games/{appid}/launch
 POST /api/v1/net/wake/{alias}
 POST /api/v1/input/mouse/{move|click|scroll}  ·  /input/mouse/stream
 POST /api/v1/input/{key|type}
-POST /api/v1/files/upload          (X-Filename header)
+POST /api/v1/files/upload          (headers X-Filename, X-Dir, X-Rel)
+POST /api/v1/files/mkdir           {dir, rel, name}
+POST /api/v1/files/rename          {dir, rel, name, new_name}
+POST /api/v1/files/delete          {dir, rel, name, recursive}   X-Confirm: true
+POST /api/v1/files/open            {dir, rel, name}    (xdg-open en el PC)
 POST /api/v1/sudo/request                            (askpass broker)
 GET  /api/v1/sudo/{rid}/wait?timeout=N
 POST /api/v1/sudo/{rid}/decision   {approve: bool}    (huella en la app)
@@ -426,5 +430,5 @@ POST /api/v1/sudo/{rid}/decision   {approve: bool}    (huella en la app)
 MIT. Ver [LICENSE](LICENSE).
 ```
 <!-- profile-excerpt -->
-**Panel Android + backend Python** para controlar tu PC Linux desde el celu vía **Tailscale**. Kotlin/Compose con tema cyberpunk, Ktor 3 + SSE para push en vivo, ForegroundService para notifs en background. Daemon stdlib que expone REST/SSE bajo polkit narrow-scope: poder, kill, services, audio sinks + volumen/mute (pactl), portapapeles (wl-clipboard), pantallas niri + DPMS, MPRIS con seek±15/fullscreen, lanzar apps/juegos Steam, journal, updates `pacman`. Auth dual: identidad Tailscale (`tailscale whois`) o Bearer token. Cero servicios externos, cero telemetría. `// linux-control · phone-rig · tailnet-native`
+**Panel Android + backend Python** para controlar tu PC Linux desde el celu vía **Tailscale**. Kotlin/Compose con tema cyberpunk, Ktor 3 + SSE para push en vivo, ForegroundService para notifs en background. Daemon stdlib que expone REST/SSE bajo polkit narrow-scope: poder, kill, services, audio sinks + volumen/mute (pactl), portapapeles (wl-clipboard), pantallas niri + DPMS, MPRIS con seek±15/fullscreen, lanzar apps/juegos Steam, gestor de archivos (navegar/subir/bajar/renombrar/borrar/abrir, anti path-traversal), journal, updates `pacman`. Auth dual: identidad Tailscale (`tailscale whois`) o Bearer token. Cero servicios externos, cero telemetría. `// linux-control · phone-rig · tailnet-native`
 <!-- /profile-excerpt -->

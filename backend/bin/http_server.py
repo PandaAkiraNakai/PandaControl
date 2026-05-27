@@ -17,6 +17,7 @@ import json
 import mimetypes
 import os
 import re
+import shutil
 import secrets
 import socket
 import subprocess
@@ -416,6 +417,7 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/v1/services/",
         "/api/v1/processes/",
         "/api/v1/updates/apply",
+        "/api/v1/files/delete",
     )
 
     def _dispatch_post(self):
@@ -594,6 +596,14 @@ class _Handler(BaseHTTPRequestHandler):
                 body = {"result": result}
             elif path == "/api/v1/files/upload":
                 body = self._files_upload()
+            elif path == "/api/v1/files/mkdir":
+                body = self._files_mkdir()
+            elif path == "/api/v1/files/rename":
+                body = self._files_rename()
+            elif path == "/api/v1/files/delete":
+                body = self._files_delete()
+            elif path == "/api/v1/files/open":
+                body = self._files_open()
             elif path == "/api/v1/sudo/request":
                 # POST del askpass binary: autenticación por token interno
                 if not self._authed_sudo_internal():
@@ -1157,6 +1167,22 @@ class _Handler(BaseHTTPRequestHandler):
             return dirs[idx]
         return None
 
+    def _resolve_path(self, idx_str: str, rel: str) -> Path | None:
+        """Resuelve `shared_dir[idx] / rel` garantizando que el resultado
+        queda DENTRO del shared_dir (anti path-traversal y anti-symlink:
+        resolve() colapsa `..` y sigue symlinks; relative_to() verifica
+        contención). Devuelve None si el idx es inválido o si rel escapa."""
+        base = self._resolve_dir(idx_str)
+        if base is None:
+            return None
+        rel = (rel or "").strip().strip("/")
+        target = (base / rel).resolve()
+        try:
+            target.relative_to(base)
+        except ValueError:
+            return None
+        return target
+
     def _safe_filename(self, name: str) -> str | None:
         """Devuelve un filename limpio o None si es inválido. Sin separadores,
         sin paths, sin caracteres raros, longitud razonable."""
@@ -1185,12 +1211,19 @@ class _Handler(BaseHTTPRequestHandler):
                     for i, p in enumerate(dirs)
                 ],
             }
-        target = self._resolve_dir(q.get("dir", "0"))
+        rel = q.get("rel", "")
+        target = self._resolve_path(q.get("dir", "0"), rel)
         if target is None:
             return {"error": "dir inválido"}
+        if not target.is_dir():
+            return {"error": "no es un directorio"}
         files = []
         try:
-            for entry in sorted(target.iterdir(), key=lambda e: e.name.lower()):
+            for entry in sorted(
+                target.iterdir(),
+                # carpetas primero, luego por nombre (case-insensitive)
+                key=lambda e: (not e.is_dir(), e.name.lower()),
+            ):
                 if entry.name.startswith("."):
                     continue
                 try:
@@ -1208,6 +1241,7 @@ class _Handler(BaseHTTPRequestHandler):
         return {
             "enabled": True,
             "dir_idx": int(q.get("dir", "0")),
+            "rel": rel.strip().strip("/"),
             "path": str(target),
             "files": files,
         }
@@ -1219,10 +1253,11 @@ class _Handler(BaseHTTPRequestHandler):
             self._audit("/api/v1/files/download", 403)
             return
         q = self._parse_qs()
-        target = self._resolve_dir(q.get("dir", ""))
+        base = self._resolve_dir(q.get("dir", ""))
+        target = self._resolve_path(q.get("dir", ""), q.get("rel", ""))
         name = self._safe_filename(q.get("name", ""))
-        if target is None or name is None:
-            self._err(400, "dir/name inválidos")
+        if base is None or target is None or name is None or not target.is_dir():
+            self._err(400, "dir/rel/name inválidos")
             self._audit("/api/v1/files/download", 400)
             return
         path = target / name
@@ -1234,7 +1269,7 @@ class _Handler(BaseHTTPRequestHandler):
         # contra symlinks que apunten fuera).
         try:
             real = path.resolve(strict=True)
-            real.relative_to(target)
+            real.relative_to(base)
         except (ValueError, OSError):
             self._err(403, "fuera del shared_dir")
             self._audit("/api/v1/files/download", 403)
@@ -1271,7 +1306,13 @@ class _Handler(BaseHTTPRequestHandler):
         dirs = self._shared_dirs()
         if not dirs:
             raise FileNotFoundError("no hay shared_dirs configurados")
-        target_dir = dirs[0]
+        # Destino: X-Dir (idx, default 0) + X-Rel (subcarpeta, URL-encoded).
+        # Por defecto sube a la raíz del primer shared_dir (compat hacia atrás).
+        dir_idx = self.headers.get("X-Dir", "0").strip() or "0"
+        rel = urllib.parse.unquote(self.headers.get("X-Rel", "").strip())
+        target_dir = self._resolve_path(dir_idx, rel)
+        if target_dir is None or not target_dir.is_dir():
+            return {"result": "error", "error": "destino inválido"}
         # filename viene en header X-Filename (URL-encoded UTF-8).
         raw_name = self.headers.get("X-Filename", "").strip()
         name = self._safe_filename(urllib.parse.unquote(raw_name))
@@ -1326,6 +1367,115 @@ class _Handler(BaseHTTPRequestHandler):
             "path": str(final_path),
             "size": length,
         }
+
+    # ─── Gestión de archivos (mkdir / rename / delete / open) ──────────────
+
+    def _files_enabled(self) -> bool:
+        return bool(self.api.ctx.cfg.get("files", {}).get("enabled", True))
+
+    def _files_mkdir(self) -> dict:
+        if not self._files_enabled():
+            return {"result": "error", "error": "files disabled"}
+        data = self._read_json_body()
+        parent = self._resolve_path(str(data.get("dir", "0")), data.get("rel", ""))
+        name = self._safe_filename(str(data.get("name", "")))
+        if parent is None or not parent.is_dir() or name is None:
+            return {"result": "error", "error": "dir/rel/name inválidos"}
+        new_dir = parent / name
+        if new_dir.exists():
+            return {"result": "error", "error": "ya existe"}
+        try:
+            new_dir.mkdir(mode=0o755)
+        except OSError as e:
+            return {"result": "error", "error": str(e)[:200]}
+        self.api.ctx.audit.log("files_mkdir", path=str(new_dir))
+        return {"result": "ok", "name": name}
+
+    def _files_rename(self) -> dict:
+        if not self._files_enabled():
+            return {"result": "error", "error": "files disabled"}
+        data = self._read_json_body()
+        parent = self._resolve_path(str(data.get("dir", "0")), data.get("rel", ""))
+        name = self._safe_filename(str(data.get("name", "")))
+        new_name = self._safe_filename(str(data.get("new_name", "")))
+        if parent is None or not parent.is_dir() or name is None or new_name is None:
+            return {"result": "error", "error": "dir/rel/name inválidos"}
+        src = parent / name
+        dst = parent / new_name
+        if not src.exists():
+            return {"result": "error", "error": "origen no existe"}
+        if dst.exists():
+            return {"result": "error", "error": "destino ya existe"}
+        try:
+            src.rename(dst)
+        except OSError as e:
+            return {"result": "error", "error": str(e)[:200]}
+        self.api.ctx.audit.log("files_rename", src=str(src), dst=str(dst))
+        return {"result": "ok", "name": new_name}
+
+    def _files_delete(self) -> dict:
+        if not self._files_enabled():
+            return {"result": "error", "error": "files disabled"}
+        data = self._read_json_body()
+        base = self._resolve_dir(str(data.get("dir", "0")))
+        parent = self._resolve_path(str(data.get("dir", "0")), data.get("rel", ""))
+        name = self._safe_filename(str(data.get("name", "")))
+        if base is None or parent is None or not parent.is_dir() or name is None:
+            return {"result": "error", "error": "dir/rel/name inválidos"}
+        path = parent / name
+        # No seguir symlinks fuera del shared_dir: el padre real debe colgar de base.
+        if not path.is_symlink():
+            try:
+                path.resolve(strict=True).relative_to(base)
+            except (ValueError, OSError):
+                return {"result": "error", "error": "fuera del shared_dir"}
+        recursive = bool(data.get("recursive"))
+        try:
+            if path.is_dir() and not path.is_symlink():
+                if recursive:
+                    shutil.rmtree(path)
+                else:
+                    path.rmdir()  # falla si no está vacía
+            else:
+                path.unlink()
+        except OSError as e:
+            # rmdir de carpeta no vacía → pista clara para el cliente
+            return {"result": "error", "error": str(e)[:200]}
+        self.api.ctx.audit.log("files_delete", path=str(path), recursive=recursive)
+        return {"result": "ok", "name": name}
+
+    def _files_open(self) -> dict:
+        """Abre el archivo/carpeta en el PC con su app por defecto (xdg-open),
+        lanzado como unidad transitoria del usuario para heredar la sesión
+        gráfica (igual que execute_app en el daemon)."""
+        if not self._files_enabled():
+            return {"result": "error", "error": "files disabled"}
+        data = self._read_json_body()
+        parent = self._resolve_path(str(data.get("dir", "0")), data.get("rel", ""))
+        name = self._safe_filename(str(data.get("name", "")))
+        if parent is None or name is None:
+            return {"result": "error", "error": "dir/rel/name inválidos"}
+        path = parent / name
+        if not path.exists():
+            return {"result": "error", "error": "no existe"}
+        uid = os.getuid()
+        env = {**os.environ, "XDG_RUNTIME_DIR": f"/run/user/{uid}", "LC_ALL": "C"}
+        cmd = ["systemd-run", "--user", "--collect", "--quiet", "--",
+               "xdg-open", str(path)]
+        try:
+            proc = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=10, env=env,
+            )
+        except subprocess.TimeoutExpired:
+            return {"result": "error", "error": "timeout"}
+        except FileNotFoundError:
+            return {"result": "error", "error": "systemd-run no encontrado"}
+        if proc.returncode != 0:
+            return {"result": "error",
+                    "error": (proc.stderr or proc.stdout or "").strip()[:200]
+                             or f"exit {proc.returncode}"}
+        self.api.ctx.audit.log("files_open", path=str(path))
+        return {"result": "ok", "name": name}
 
     def _stream_events(self) -> None:
         # En HTTP/1.1, una response sin Content-Length DEBE usar

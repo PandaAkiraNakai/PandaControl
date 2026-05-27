@@ -51,6 +51,22 @@ lee (wl-paste). El volumen maestro del sink por defecto se controla con
 `POST /api/v1/audio/volume {pct: 0..150}` y
 `POST /api/v1/audio/mute {state: on|off|toggle}` (vía `pactl`).
 
+## Módulo Archivos (gestor)
+
+Expone los `[files].shared_dirs` como un navegador. Todo path se resuelve
+con `(shared_dir / rel).resolve()` y se verifica con `relative_to(base)`:
+imposible salir del directorio compartido (anti path-traversal y anti-symlink).
+
+- `GET /api/v1/files` — índice de shared_dirs.
+- `GET /api/v1/files?dir=N&rel=SUB` — lista una subcarpeta (carpetas primero).
+- `GET /api/v1/files/download?dir=N&rel=SUB&name=F` — descarga (streaming).
+- `POST /api/v1/files/upload` — sube; headers `X-Filename`, `X-Dir`, `X-Rel`.
+- `POST /api/v1/files/mkdir {dir,rel,name}` — crea carpeta.
+- `POST /api/v1/files/rename {dir,rel,name,new_name}` — renombra.
+- `POST /api/v1/files/delete {dir,rel,name,recursive}` — borra (X-Confirm).
+- `POST /api/v1/files/open {dir,rel,name}` — abre en el PC (`xdg-open` vía
+  `systemd-run --user`).
+
 ## Inventario (después de instalar)
 
 | Path | Dueño | Perms | Qué es |
