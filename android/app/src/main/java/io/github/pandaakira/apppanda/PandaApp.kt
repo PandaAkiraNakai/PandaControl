@@ -23,6 +23,9 @@ class PandaApp : Application() {
         // service automáticamente al arrancar la app.
         appScope.launch {
             try {
+                // Instalaciones previas guardaban un único backend (base_url/
+                // token sueltos); convertirlo en el primer perfil.
+                settings.migrateLegacyIfNeeded()
                 val enabled = settings.pushEnabled.first()
                 val cfg = settings.config.first()
                 if (enabled && cfg.isConfigured) {

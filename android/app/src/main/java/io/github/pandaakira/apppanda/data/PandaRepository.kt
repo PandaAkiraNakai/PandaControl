@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.launch
@@ -61,7 +62,10 @@ class PandaRepository(
 
     init {
         scope.launch(Dispatchers.IO) {
-            settings.config.collect { cfg ->
+            // distinctUntilChanged: reconstruir el API/SSE solo cuando cambia el
+            // backend (baseUrl/token), no ante cada escritura de settings (tema,
+            // push, etc.). Cambiar de perfil a otro PC sí lo dispara.
+            settings.config.distinctUntilChanged().collect { cfg ->
                 _api.value?.close()
                 _api.value = if (cfg.isConfigured) PandaApi(cfg.baseUrl, cfg.token) else null
             }

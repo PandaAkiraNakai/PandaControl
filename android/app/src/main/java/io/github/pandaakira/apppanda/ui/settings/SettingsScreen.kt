@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -27,8 +28,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -47,6 +50,7 @@ import io.github.pandaakira.apppanda.PandaApp
 import io.github.pandaakira.apppanda.data.NotifCategory
 import io.github.pandaakira.apppanda.data.NotifGroup
 import io.github.pandaakira.apppanda.data.PandaApi
+import io.github.pandaakira.apppanda.data.Profile
 import io.github.pandaakira.apppanda.service.AlertsService
 import io.github.pandaakira.apppanda.ui.components.PandaCard
 import io.github.pandaakira.apppanda.ui.components.ScreenHeader
@@ -56,110 +60,14 @@ import kotlinx.coroutines.withContext
 
 @Composable
 fun SettingsScreen(app: PandaApp) {
-    val cfg by app.settings.config.collectAsState(initial = null)
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-
-    var host by remember { mutableStateOf("") }
-    var port by remember { mutableStateOf("8890") }
-    var token by remember { mutableStateOf("") }
-    var testResult by remember { mutableStateOf<String?>(null) }
-    var testOk by remember { mutableStateOf<Boolean?>(null) }
-    var busy by remember { mutableStateOf(false) }
-
-    LaunchedEffect(cfg) {
-        cfg?.let { c ->
-            if (c.baseUrl.isNotBlank() && host.isBlank()) {
-                val regex = Regex("""https?://([^:/]+)(?::(\d+))?""")
-                val m = regex.matchEntire(c.baseUrl)
-                if (m != null) {
-                    host = m.groupValues[1]
-                    port = m.groupValues[2].ifBlank { "8890" }
-                }
-                if (token.isBlank()) token = c.token
-            }
-        }
-    }
-
-    fun computeBaseUrl() = "http://${host.trim()}:${port.trim().ifBlank { "8890" }}"
-
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        ScreenHeader("SETTINGS", "backend · notificaciones · permisos")
+        ScreenHeader("SETTINGS", "perfiles · notificaciones · permisos")
 
-        // ─── Backend ─────────────────────────────────────────────────────
-        PandaCard(title = "BACKEND", accent = LocalPandaColors.current.yellow) {
-            Spacer(Modifier.height(4.dp))
-            OutlinedTextField(
-                value = host, onValueChange = { host = it },
-                label = { Text("Host") },
-                placeholder = { Text("100.64.0.5  (IP Tailscale)") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
-                value = port, onValueChange = { port = it.filter { c -> c.isDigit() } },
-                label = { Text("Puerto") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
-                value = token, onValueChange = { token = it },
-                label = { Text("Bearer token (opcional con Tailscale auth)") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
-                    onClick = {
-                        busy = true; testResult = null; testOk = null
-                        scope.launch {
-                            val api = PandaApi(computeBaseUrl(), token.trim())
-                            try {
-                                val sys = withContext(Dispatchers.IO) { api.systemStatus() }
-                                testOk = true
-                                testResult = "OK · ${sys.hostname} · ${sys.cpu.cores} cores"
-                            } catch (e: Exception) {
-                                testOk = false
-                                testResult = "fallo: ${e.message?.take(100) ?: e::class.simpleName}"
-                            } finally {
-                                api.close(); busy = false
-                            }
-                        }
-                    },
-                    enabled = !busy && host.isNotBlank(),
-                    modifier = Modifier.weight(1f),
-                ) { Text(if (busy) "Probando…" else "Probar") }
-                Button(
-                    onClick = {
-                        scope.launch {
-                            app.settings.save(computeBaseUrl(), token.trim())
-                            testResult = "guardado"; testOk = true
-                        }
-                    },
-                    enabled = !busy && host.isNotBlank(),
-                    modifier = Modifier.weight(1f),
-                ) { Text("Guardar") }
-            }
-            testResult?.let {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = when (testOk) {
-                        true -> LocalPandaColors.current.green
-                        false -> LocalPandaColors.current.red
-                        else -> MaterialTheme.colorScheme.onSurface
-                    },
-                )
-            }
-        }
+        // ─── Perfiles (selector multi-PC) ─────────────────────────────────
+        ProfilesCard(app = app)
 
         // ─── Notificaciones push ─────────────────────────────────────────
         PushNotificationsCard(app = app)
@@ -173,7 +81,7 @@ fun SettingsScreen(app: PandaApp) {
         // ─── Acerca de ───────────────────────────────────────────────────
         PandaCard(title = "ABOUT", accent = LocalPandaColors.current.magenta) {
             Text(
-                "Panda Control · panel para sergiotorre desde el celular.",
+                "Panda Control · panel para controlar tus PCs Linux desde el celular.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface,
             )
@@ -185,6 +93,213 @@ fun SettingsScreen(app: PandaApp) {
         }
 
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+/** Selector multi-PC: lista de perfiles, cuál está activo, alta/edición/baja.
+ *  El perfil activo es el que alimenta `settings.config`, así que cambiarlo
+ *  reconecta toda la app (API + SSE) al otro backend. */
+@Composable
+private fun ProfilesCard(app: PandaApp) {
+    val profiles by app.settings.profiles.collectAsState(initial = emptyList())
+    val activeId by app.settings.activeProfileId.collectAsState(initial = "")
+    val scope = rememberCoroutineScope()
+    // null = mostrando la lista; Profile con id "" = alta; con id = edición.
+    var editing by remember { mutableStateOf<Profile?>(null) }
+
+    PandaCard(title = "PERFILES", accent = LocalPandaColors.current.yellow) {
+        Text(
+            "Cada perfil es un PC con su backend. Cambiá de perfil para controlar otra máquina por la misma tailnet.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(8.dp))
+
+        if (profiles.isEmpty()) {
+            Text(
+                "Todavía no hay perfiles. Agregá tu primer PC.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = LocalPandaColors.current.yellow,
+            )
+        } else {
+            profiles.forEach { p ->
+                ProfileRow(
+                    profile = p,
+                    active = p.id == activeId,
+                    onSelect = { scope.launch { app.settings.setActiveProfile(p.id) } },
+                    onEdit = { editing = p },
+                    onDelete = { scope.launch { app.settings.deleteProfile(p.id) } },
+                )
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = { editing = Profile(id = "", name = "", baseUrl = "") },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("+ Agregar perfil") }
+    }
+
+    editing?.let { prof ->
+        ProfileEditorCard(
+            initial = prof,
+            onDismiss = { editing = null },
+            onSave = { saved ->
+                scope.launch {
+                    app.settings.upsertProfile(saved)
+                    editing = null
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun ProfileRow(
+    profile: Profile,
+    active: Boolean,
+    onSelect: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+    ) {
+        RadioButton(selected = active, onClick = onSelect)
+        Column(modifier = Modifier.weight(1f).clickable { onSelect() }) {
+            Text(
+                profile.name.ifBlank { "(sin nombre)" },
+                style = MaterialTheme.typography.titleSmall,
+                color = if (active) LocalPandaColors.current.green else MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                profile.baseUrl.ifBlank { "—" },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        TextButton(onClick = onEdit) { Text("Editar") }
+        TextButton(onClick = onDelete) {
+            Text("Borrar", color = LocalPandaColors.current.red)
+        }
+    }
+}
+
+/** Editor de un perfil (alta o edición). Separa baseUrl en host + puerto para
+ *  la UI y lo recompone al guardar; permite probar la conexión antes. */
+@Composable
+private fun ProfileEditorCard(
+    initial: Profile,
+    onDismiss: () -> Unit,
+    onSave: (Profile) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    // Anclados a initial.id: si se cambia de perfil objetivo con el editor
+    // abierto, los campos se reinician al del nuevo perfil.
+    var name by remember(initial.id) { mutableStateOf(initial.name) }
+    var host by remember(initial.id) { mutableStateOf("") }
+    var port by remember(initial.id) { mutableStateOf("8890") }
+    var token by remember(initial.id) { mutableStateOf(initial.token) }
+    var testResult by remember(initial.id) { mutableStateOf<String?>(null) }
+    var testOk by remember(initial.id) { mutableStateOf<Boolean?>(null) }
+    var busy by remember(initial.id) { mutableStateOf(false) }
+
+    LaunchedEffect(initial.id) {
+        val m = Regex("""https?://([^:/]+)(?::(\d+))?""").matchEntire(initial.baseUrl)
+        if (m != null) {
+            host = m.groupValues[1]
+            port = m.groupValues[2].ifBlank { "8890" }
+        }
+    }
+
+    fun computeBaseUrl() = "http://${host.trim()}:${port.trim().ifBlank { "8890" }}"
+
+    PandaCard(
+        title = if (initial.id.isBlank()) "NUEVO PERFIL" else "EDITAR PERFIL",
+        accent = LocalPandaColors.current.cyan,
+    ) {
+        OutlinedTextField(
+            value = name, onValueChange = { name = it },
+            label = { Text("Nombre") },
+            placeholder = { Text("Torre, Laptop…") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = host, onValueChange = { host = it },
+            label = { Text("Host") },
+            placeholder = { Text("100.64.0.5  (IP Tailscale)") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = port, onValueChange = { port = it.filter { c -> c.isDigit() } },
+            label = { Text("Puerto") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = token, onValueChange = { token = it },
+            label = { Text("Bearer token (opcional con Tailscale auth)") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = {
+                    busy = true; testResult = null; testOk = null
+                    scope.launch {
+                        val api = PandaApi(computeBaseUrl(), token.trim())
+                        try {
+                            val sys = withContext(Dispatchers.IO) { api.systemStatus() }
+                            testOk = true
+                            testResult = "OK · ${sys.hostname} · ${sys.cpu.cores} cores"
+                        } catch (e: Exception) {
+                            testOk = false
+                            testResult = "fallo: ${e.message?.take(100) ?: e::class.simpleName}"
+                        } finally {
+                            api.close(); busy = false
+                        }
+                    }
+                },
+                enabled = !busy && host.isNotBlank(),
+                modifier = Modifier.weight(1f),
+            ) { Text(if (busy) "Probando…" else "Probar") }
+            Button(
+                onClick = {
+                    onSave(
+                        initial.copy(
+                            id = initial.id.ifBlank { Profile.newId() },
+                            name = name.trim().ifBlank { host.trim() },
+                            baseUrl = computeBaseUrl(),
+                            token = token.trim(),
+                        )
+                    )
+                },
+                enabled = !busy && host.isNotBlank(),
+                modifier = Modifier.weight(1f),
+            ) { Text("Guardar") }
+        }
+        Spacer(Modifier.height(4.dp))
+        TextButton(onClick = onDismiss) { Text("Cancelar") }
+        testResult?.let {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                it,
+                style = MaterialTheme.typography.bodyMedium,
+                color = when (testOk) {
+                    true -> LocalPandaColors.current.green
+                    false -> LocalPandaColors.current.red
+                    else -> MaterialTheme.colorScheme.onSurface
+                },
+            )
+        }
     }
 }
 

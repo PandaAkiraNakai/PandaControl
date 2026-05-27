@@ -1,7 +1,9 @@
 package io.github.pandaakira.apppanda.ui.home
 import io.github.pandaakira.apppanda.ui.theme.LocalPandaColors
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -14,6 +16,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -111,6 +115,7 @@ fun HomeScreen(app: PandaApp, onGoSetup: () -> Unit) {
         modifier = Modifier.fillMaxSize(),
     ) {
         item {
+            ProfileQuickSwitch(app = app)
             HomeHeader(app = app, hostname = status?.hostname)
             status?.let {
                 Text(
@@ -176,6 +181,48 @@ private fun fmtUptime(secs: Double): String {
     val h = (s % 86400) / 3600
     val m = (s % 3600) / 60
     return if (d > 0) "${d}d ${h}h ${m}m" else "${h}h ${m}m"
+}
+
+/** Switch rápido de PC en el encabezado del Home. Solo aparece cuando hay 2+
+ *  perfiles; tocar la chip despliega la lista y elegir otro reconecta la app
+ *  al backend de ese perfil (cambia `settings.config`). */
+@Composable
+private fun ProfileQuickSwitch(app: PandaApp) {
+    val profiles by app.settings.profiles.collectAsState(initial = emptyList())
+    val activeId by app.settings.activeProfileId.collectAsState(initial = "")
+    val scope = rememberCoroutineScope()
+    var expanded by remember { mutableStateOf(false) }
+
+    if (profiles.size < 2) return
+
+    val activeName = profiles.firstOrNull { it.id == activeId }?.name?.ifBlank { "PC" } ?: "PC"
+    Box {
+        Text(
+            "⌄ $activeName",
+            style = MaterialTheme.typography.labelLarge,
+            color = LocalPandaColors.current.cyan,
+            modifier = Modifier
+                .clickable { expanded = true }
+                .padding(horizontal = 6.dp, vertical = 2.dp),
+        )
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            profiles.forEach { p ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            if (p.id == activeId) "● ${p.name}" else p.name,
+                            color = if (p.id == activeId) LocalPandaColors.current.green
+                            else MaterialTheme.colorScheme.onSurface,
+                        )
+                    },
+                    onClick = {
+                        expanded = false
+                        scope.launch { app.settings.setActiveProfile(p.id) }
+                    },
+                )
+            }
+        }
+    }
 }
 
 @Composable
