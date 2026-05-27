@@ -501,7 +501,7 @@ fun UpdatesScreen(app: PandaApp) {
     if (pendingApply) {
         io.github.pandaakira.apppanda.ui.components.ConfirmDialog(
             title = pandaDeco("APPLY UPDATES"),
-            message = "Esto arranca pacman-update.service (oneshot) en la torre. " +
+            message = "Esto arranca pacman-update.service (oneshot) en el PC. " +
                       "El job corre en background; vuelve a abrir esta pantalla " +
                       "después para ver el resultado.",
             confirmLabel = "aplicar",

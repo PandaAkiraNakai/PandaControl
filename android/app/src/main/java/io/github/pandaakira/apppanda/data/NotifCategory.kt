@@ -33,7 +33,7 @@ enum class NotifCategory(
     LOAD("load1_per_core", "Carga (load)", NotifGroup.METRICS),
     SERVICE_FAILED("service_failed", "Servicios fallidos", NotifGroup.SYSTEM),
     SESSION_NEW("session_new", "Nueva sesión", NotifGroup.SYSTEM),
-    BOOT("boot", "Inicio de la torre", NotifGroup.SYSTEM),
+    BOOT("boot", "Inicio del PC", NotifGroup.SYSTEM),
     RESUME("resume", "Resume / wake", NotifGroup.SYSTEM),
     ;
 

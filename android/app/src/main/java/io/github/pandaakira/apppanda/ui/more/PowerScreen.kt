@@ -59,11 +59,11 @@ fun PowerScreen(app: PandaApp) {
 
     val options = listOf(
         PowerOption("off", "Apagar", LocalPandaColors.current.red,
-            "Esto va a apagar la torre. ¿Estás seguro?"),
+            "Esto va a apagar el PC. ¿Estás seguro?"),
         PowerOption("reboot", "Reiniciar", LocalPandaColors.current.orange,
-            "Esto va a reiniciar la torre."),
+            "Esto va a reiniciar el PC."),
         PowerOption("suspend", "Suspender", LocalPandaColors.current.yellow,
-            "Suspender la torre (S3)."),
+            "Suspender el PC (S3)."),
         PowerOption("lock", "Bloquear", LocalPandaColors.current.cyan,
             "Bloquear la sesión gráfica."),
     )
@@ -94,8 +94,8 @@ fun PowerScreen(app: PandaApp) {
                      else LocalPandaColors.current.cyan,
         ) {
             Text(
-                if (inhibited) "Activo: la torre NO se suspenderá ni entrará en idle."
-                else "Evita que la torre se suspenda (útil mientras descarga algo).",
+                if (inhibited) "Activo: el PC NO se suspenderá ni entrará en idle."
+                else "Evita que el PC se suspenda (útil mientras descarga algo).",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

@@ -127,11 +127,11 @@ class AlertsService : Service() {
             NotificationChannel(
                 CHANNEL_SERVICE, "Panda Control service",
                 NotificationManager.IMPORTANCE_LOW,
-            ).apply { description = "Conexión persistente con la torre." },
+            ).apply { description = "Conexión persistente con el PC activo." },
         )
         nm.createNotificationChannel(
             NotificationChannel(
-                CHANNEL_ALERTS, "Alertas de la torre",
+                CHANNEL_ALERTS, "Alertas PandaControl",
                 NotificationManager.IMPORTANCE_HIGH,
             ).apply { description = "Alertas CPU/RAM/temps, servicios failed, boot, resume." },
         )
@@ -141,7 +141,7 @@ class AlertsService : Service() {
             CHANNEL_SUDO, "Solicitudes sudo",
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
-            description = "Aprobar/rechazar elevación de privilegios en la torre."
+            description = "Aprobar/rechazar elevación de privilegios."
             enableVibration(true)
             vibrationPattern = longArrayOf(0, 300, 200, 300, 200, 300)
             val ringtone = RingtoneManager.getDefaultUri(
@@ -170,7 +170,7 @@ class AlertsService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_SERVICE)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("Panda Control")
-            .setContentText("Escuchando eventos de la torre")
+            .setContentText("Escuchando eventos del PC activo")
             .setOngoing(true)
             .setSilent(true)
             .setContentIntent(openAppPendingIntent())
@@ -195,7 +195,7 @@ class AlertsService : Service() {
             }
             "service_failed" -> "❌ Servicio falló" to (evt.unit ?: "")
             "session_new" -> "👤 Nueva sesión" to (evt.session ?: "")
-            "boot" -> "🟢 Torre iniciada" to (evt.hostname ?: "")
+            "boot" -> "🟢 PC iniciado" to (evt.hostname ?: "")
             "resume" -> "💤→🟢 Resume" to "gap ≈ ${evt.gapS?.toInt() ?: "?"} s"
             else -> return
         }

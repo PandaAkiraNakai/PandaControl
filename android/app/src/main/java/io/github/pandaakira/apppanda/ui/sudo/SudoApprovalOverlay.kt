@@ -63,10 +63,10 @@ fun SudoApprovalOverlay(app: PandaApp, theme: PandaTheme) {
     val req = pending ?: return
 
     val context = LocalContext.current
-    // La aprobación exige confirmar identidad con BiometricPrompt, que necesita
-    // una FragmentActivity. MainActivity lo es.
     val activity = context as? FragmentActivity
     val api by app.repository.api.collectAsState()
+    val activeProfile by app.settings.activeProfile.collectAsState(initial = null)
+    val pcName = activeProfile?.name?.ifBlank { "PC" } ?: "PC"
     val scope = rememberCoroutineScope()
 
     val totalS = req.timeoutS
@@ -221,6 +221,7 @@ fun SudoApprovalOverlay(app: PandaApp, theme: PandaTheme) {
                                     promptSudoBiometric(
                                         activity = act,
                                         command = req.command,
+                                        pcName = pcName,
                                         onApproved = { authing = false; decide(true) },
                                         onDenied = { authing = false },
                                     )
@@ -254,12 +255,13 @@ private fun cancelSudoNotif(context: Context, rid: String) {
  * llama a `onDenied` sin aprobar.
  *
  * Si el dispositivo no tiene ningún método de bloqueo configurado, no podemos
- * exigir biometría — aprobamos directo para no dejar al dueño fuera de su
- * propia torre (el factor de seguridad real es ya tener la app y el token).
+ * exigir biometría — aprobamos directo (el factor de seguridad real es ya
+ * tener la app y el token).
  */
 private fun promptSudoBiometric(
     activity: FragmentActivity,
     command: String,
+    pcName: String,
     onApproved: () -> Unit,
     onDenied: () -> Unit,
 ) {
@@ -289,11 +291,11 @@ private fun promptSudoBiometric(
         .setTitle("Aprobar elevación sudo")
         .setSubtitle(
             if (command.isNotBlank()) "Comando: ${command.take(70)}"
-            else "Elevación de privilegios en la torre",
+            else "Elevación de privilegios en $pcName",
         )
         .setDescription(
-            "Al confirmar tu identidad APRUEBAS esta solicitud de sudo en la " +
-                "torre. Cancela para no aprobar.",
+            "Al confirmar tu identidad APRUEBAS esta solicitud de sudo en " +
+                "$pcName. Cancela para no aprobar.",
         )
         .setAllowedAuthenticators(allowed)
         .build()

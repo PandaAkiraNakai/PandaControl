@@ -324,7 +324,7 @@ private fun PushNotificationsCard(app: PandaApp) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                 Text(
-                    "Push de la torre",
+                    "Notificaciones push",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                 )

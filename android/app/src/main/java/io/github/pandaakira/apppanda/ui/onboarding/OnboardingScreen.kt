@@ -11,22 +11,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import android.Manifest
-import android.content.pm.PackageManager
-import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.platform.LocalContext
-import androidx.core.content.ContextCompat
-import io.github.pandaakira.apppanda.service.AlertsService
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -40,13 +29,15 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.github.pandaakira.apppanda.PandaApp
 import io.github.pandaakira.apppanda.data.PandaApi
+import io.github.pandaakira.apppanda.data.Profile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
 fun OnboardingScreen(app: PandaApp, onSaved: () -> Unit) {
-    val cfg by app.settings.config.collectAsState(initial = null)
+    val activeProfile by app.settings.activeProfile.collectAsState(initial = null)
+    var name by remember { mutableStateOf("") }
     var host by remember { mutableStateOf("") }
     var port by remember { mutableStateOf("8890") }
     var token by remember { mutableStateOf("") }
@@ -55,17 +46,18 @@ fun OnboardingScreen(app: PandaApp, onSaved: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(cfg) {
-        cfg?.let { c ->
-            if (c.baseUrl.isNotBlank() && host.isBlank()) {
+    LaunchedEffect(activeProfile) {
+        activeProfile?.let { p ->
+            if (p.baseUrl.isNotBlank() && host.isBlank()) {
                 val regex = Regex("""https?://([^:/]+)(?::(\d+))?""")
-                val m = regex.matchEntire(c.baseUrl)
+                val m = regex.matchEntire(p.baseUrl)
                 if (m != null) {
                     host = m.groupValues[1]
                     port = m.groupValues[2].ifBlank { "8890" }
                 }
-                if (token.isBlank()) token = c.token
+                if (token.isBlank()) token = p.token
             }
+            if (name.isBlank()) name = p.name
         }
     }
 
@@ -88,7 +80,7 @@ fun OnboardingScreen(app: PandaApp, onSaved: () -> Unit) {
             color = MaterialTheme.colorScheme.primary,
         )
         Text(
-            "Configura el backend de la torre. host = IP Tailscale (o 127.0.0.1 si la torre es este dispositivo).",
+            "Configura el backend del PC. host = IP Tailscale (o 127.0.0.1 si el PC es este dispositivo).",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -96,10 +88,18 @@ fun OnboardingScreen(app: PandaApp, onSaved: () -> Unit) {
         Spacer(Modifier.height(8.dp))
 
         OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            label = { Text("Nombre del PC") },
+            placeholder = { Text("Torre, Laptop…") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
             value = host,
             onValueChange = { host = it },
             label = { Text("Host") },
-            placeholder = { Text("100.64.0.5  (IP Tailscale de tu torre)") },
+            placeholder = { Text("100.64.0.5  (IP Tailscale)") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -116,7 +116,7 @@ fun OnboardingScreen(app: PandaApp, onSaved: () -> Unit) {
             value = token,
             onValueChange = { token = it },
             label = { Text("Bearer token (opcional con Tailscale)") },
-            placeholder = { Text("hex 64 chars — déjalo vacío si tu torre usa Tailscale auth") },
+            placeholder = { Text("hex 64 chars — déjalo vacío si el PC usa Tailscale auth") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -164,7 +164,16 @@ fun OnboardingScreen(app: PandaApp, onSaved: () -> Unit) {
         Button(
             onClick = {
                 scope.launch {
-                    app.settings.save(computeBaseUrl(), token.trim())
+                    val url = computeBaseUrl()
+                    val tok = token.trim()
+                    val n = name.trim().ifBlank { "Mi PC" }
+                    val existing = activeProfile
+                    val profile = if (existing != null) {
+                        existing.copy(name = n, baseUrl = url, token = tok)
+                    } else {
+                        Profile(Profile.newId(), n, url, tok)
+                    }
+                    app.settings.upsertProfile(profile)
                     onSaved()
                 }
             },
@@ -174,12 +183,12 @@ fun OnboardingScreen(app: PandaApp, onSaved: () -> Unit) {
             Text("Guardar y entrar")
         }
 
-        if (cfg?.isConfigured == true) {
+        if (activeProfile != null) {
             TextButton(
                 onClick = {
                     scope.launch {
                         app.settings.clear()
-                        host = ""; port = "8890"; token = ""
+                        name = ""; host = ""; port = "8890"; token = ""
                         testResult = null; testOk = null
                     }
                 },
@@ -188,7 +197,7 @@ fun OnboardingScreen(app: PandaApp, onSaved: () -> Unit) {
 
         Spacer(Modifier.height(8.dp))
         Text(
-            "Más ajustes (notificaciones, permisos) están en Modules → Ajustes.",
+            "Más ajustes (notificaciones, permisos) están en Sistema → Ajustes.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
