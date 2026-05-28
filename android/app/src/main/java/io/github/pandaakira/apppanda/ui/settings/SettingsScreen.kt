@@ -3,6 +3,7 @@ import io.github.pandaakira.apppanda.ui.theme.LocalPandaColors
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -10,8 +11,10 @@ import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings as AndroidSettings
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -308,16 +311,29 @@ private fun PushNotificationsCard(app: PandaApp) {
     val context = LocalContext.current
     val pushEnabled by app.settings.pushEnabled.collectAsState(initial = false)
     val scope = rememberCoroutineScope()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var waitingForPermission by remember { mutableStateOf(false) }
 
-    val notifPermLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        if (granted) {
-            scope.launch {
-                app.settings.setPushEnabled(true)
-                AlertsService.start(context)
+    fun notifGranted() = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        ContextCompat.checkSelfPermission(
+            context, Manifest.permission.POST_NOTIFICATIONS,
+        ) == PackageManager.PERMISSION_GRANTED
+
+    // Activa el push si el usuario vuelve con el permiso ya concedido.
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && waitingForPermission) {
+                waitingForPermission = false
+                if (notifGranted()) {
+                    scope.launch {
+                        app.settings.setPushEnabled(true)
+                        AlertsService.start(context)
+                    }
+                }
             }
         }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     PandaCard(title = "NOTIFICACIONES PUSH", accent = LocalPandaColors.current.cyan) {
@@ -338,17 +354,19 @@ private fun PushNotificationsCard(app: PandaApp) {
                 checked = pushEnabled,
                 onCheckedChange = { wanted ->
                     if (wanted) {
-                        val needs = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-                        val granted = !needs || ContextCompat.checkSelfPermission(
-                            context, Manifest.permission.POST_NOTIFICATIONS,
-                        ) == PackageManager.PERMISSION_GRANTED
-                        if (granted) {
+                        if (notifGranted()) {
                             scope.launch {
                                 app.settings.setPushEnabled(true)
                                 AlertsService.start(context)
                             }
-                        } else {
-                            notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            waitingForPermission = true
+                            // Usamos requestPermissions directo para evitar el bug de
+                            // ActivityResultRegistry con requestCode > 16 bits en Honor/EMUI.
+                            @Suppress("DEPRECATION")
+                            (context as? Activity)?.requestPermissions(
+                                arrayOf(Manifest.permission.POST_NOTIFICATIONS), 0,
+                            )
                         }
                     } else {
                         scope.launch {
@@ -424,9 +442,6 @@ private fun NotifToggleRow(
 @Composable
 private fun PermissionsCard() {
     val context = LocalContext.current
-    val notifLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-    ) { /* user response */ }
 
     val notifGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
         ContextCompat.checkSelfPermission(
@@ -443,9 +458,9 @@ private fun PermissionsCard() {
             label = "Mostrar notificaciones",
             granted = notifGranted,
             onRequest = {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                }
+                val intent = Intent(AndroidSettings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(AndroidSettings.EXTRA_APP_PACKAGE, context.packageName)
+                context.startActivity(intent)
             },
         )
         Spacer(Modifier.height(8.dp))
