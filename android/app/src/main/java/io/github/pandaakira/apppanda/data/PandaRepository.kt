@@ -1,8 +1,10 @@
 package io.github.pandaakira.apppanda.data
 
 import io.github.pandaakira.apppanda.data.models.SseEvent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -12,7 +14,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.launch
 
@@ -82,29 +85,44 @@ class PandaRepository(
     /** Source flow: una sola conexión SSE compartida entre todos los
      *  colectores (HomeScreen + AlertsService). Si nadie escucha por 5s,
      *  la conexión se cierra. Cuando alguien vuelve a escuchar, se
-     *  reabre. Esto evita las N conexiones simultáneas anteriores. */
-    private val sourceEvents: Flow<SseEvent> = channelFlow {
-        while (true) {
-            val current = _api.first { it != null }!!
-            try {
-                current.events(onByte = { _lastByteAt.value = System.currentTimeMillis() })
-                    .collect { evt ->
-                        if (evt.type == "__parse_error__") {
-                            _parseErrorCount.value = _parseErrorCount.value + 1
-                            _lastError.value = "parse: ${evt.title}"
-                            return@collect
+     *  reabre. Esto evita las N conexiones simultáneas anteriores.
+     *
+     *  flatMapLatest sobre _api: cuando cambia el perfil activo (o se
+     *  reconfigura el backend), _api emite un PandaApi nuevo y flatMapLatest
+     *  CANCELA la conexión SSE vieja y abre una contra el backend nuevo. Sin
+     *  esto el SSE quedaba pegado al primer PC capturado y nunca seguía al
+     *  perfil activo (las solicitudes sudo del laptop no llegaban). */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val sourceEvents: Flow<SseEvent> = _api.flatMapLatest { api ->
+        if (api == null) {
+            emptyFlow()
+        } else channelFlow {
+            // Backend nuevo: arranca el backoff desde cero.
+            resetBackoff()
+            while (true) {
+                try {
+                    api.events(onByte = { _lastByteAt.value = System.currentTimeMillis() })
+                        .collect { evt ->
+                            if (evt.type == "__parse_error__") {
+                                _parseErrorCount.value = _parseErrorCount.value + 1
+                                _lastError.value = "parse: ${evt.title}"
+                                return@collect
+                            }
+                            _lastEventAt.value = System.currentTimeMillis()
+                            _lastError.value = null
+                            resetBackoff()
+                            if (evt.type != "hello") send(evt)
                         }
-                        _lastEventAt.value = System.currentTimeMillis()
-                        _lastError.value = null
-                        resetBackoff()
-                        if (evt.type != "hello") send(evt)
-                    }
-            } catch (e: Exception) {
-                _lastError.value = "conn: ${e.message?.take(80) ?: e::class.simpleName}"
+                } catch (e: CancellationException) {
+                    // Cambio de perfil / cierre del flow: propagar, no tragar.
+                    throw e
+                } catch (e: Exception) {
+                    _lastError.value = "conn: ${e.message?.take(80) ?: e::class.simpleName}"
+                }
+                delay(reconnectBackoffMs.also {
+                    reconnectBackoffMs = (reconnectBackoffMs * 2).coerceAtMost(30_000)
+                })
             }
-            delay(reconnectBackoffMs.also {
-                reconnectBackoffMs = (reconnectBackoffMs * 2).coerceAtMost(30_000)
-            })
         }
     }
 
