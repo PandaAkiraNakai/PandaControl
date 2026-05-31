@@ -53,6 +53,7 @@ import io.github.pandaakira.apppanda.data.MouseDeltaSource
 import io.github.pandaakira.apppanda.data.PandaApi
 import io.github.pandaakira.apppanda.ui.components.PandaCard
 import io.github.pandaakira.apppanda.ui.components.ScreenHeader
+import io.github.pandaakira.apppanda.ui.media.NiriCommandsCard
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.CancellationException
@@ -335,6 +336,13 @@ fun InputControlScreen(app: PandaApp) {
                 }
             }
         }
+
+        Spacer(Modifier.height(12.dp))
+
+        // ─── Comandos del WM (niri) ───────────────────────────────────────
+        // Movidos aquí desde el tab Control: quedan entre el mouse (touchpad)
+        // y el teclado, que es donde se buscan al controlar el PC.
+        NiriCommandsCard(app)
 
         Spacer(Modifier.height(12.dp))
 
