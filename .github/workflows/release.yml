@@ -11,6 +11,10 @@ on:
 permissions:
   contents: write
 
+# Las actions JS corren en Node 24 (Node 20 quedó deprecado).
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   build:
     runs-on: ubuntu-latest
