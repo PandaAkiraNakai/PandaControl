@@ -1,23 +1,59 @@
 name: Release APK
 
-# Compila, firma y publica el APK en un GitHub Release cada vez que se
-# empuja un tag vX.Y.Z. Obtainium detecta el release y descarga el APK.
+# Compila, firma y publica el APK en un GitHub Release AUTOMATICAMENTE cada vez
+# que se actualiza la version. Flujo: subi versionCode+versionName en
+# android/app/build.gradle.kts y pushea a main -> si todavia no existe un
+# release v<versionName>, este workflow lo crea solo (el tag lo genera
+# action-gh-release apuntando al commit). Si la version no cambio, no hace nada.
+# Obtainium detecta el release y descarga el APK.
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: write
 
-# Las actions JS corren en Node 24 (Node 20 quedó deprecado).
+# Las actions JS corren en Node 24 (Node 20 quedo deprecado).
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
-  build:
+  # Lee la version y decide si hay que publicar (evita releases duplicados).
+  check:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      should: ${{ steps.decide.outputs.should }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # necesario para ver los tags existentes
+
+      - name: Leer versionName
+        id: ver
+        run: |
+          VN=$(grep -oP 'versionName\s*=\s*"\K[^"]+' android/app/build.gradle.kts)
+          echo "version=$VN" >> "$GITHUB_OUTPUT"
+          echo "Version detectada: $VN"
+
+      - name: Decidir si publicar
+        id: decide
+        run: |
+          if git rev-parse "refs/tags/v${{ steps.ver.outputs.version }}" >/dev/null 2>&1; then
+            echo "should=false" >> "$GITHUB_OUTPUT"
+            echo "El release v${{ steps.ver.outputs.version }} ya existe; no se publica."
+          else
+            echo "should=true" >> "$GITHUB_OUTPUT"
+            echo "Se publicara el release v${{ steps.ver.outputs.version }}."
+          fi
+
+  build:
+    needs: check
+    if: needs.check.outputs.should == 'true'
+    runs-on: ubuntu-latest
+    env:
+      TAG: v${{ needs.check.outputs.version }}
     defaults:
       run:
         working-directory: android
@@ -53,18 +89,18 @@ jobs:
         run: ./gradlew assembleRelease --no-daemon
 
       - name: Stage APK
-        run: cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/PandaControl-${{ github.ref_name }}.apk"
+        run: cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/PandaControl-${TAG}.apk"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PandaControl-${{ github.ref_name }}
-          path: PandaControl-${{ github.ref_name }}.apk
+          name: PandaControl-${{ env.TAG }}
+          path: PandaControl-${{ env.TAG }}.apk
 
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          files: PandaControl-${{ github.ref_name }}.apk
+          tag_name: ${{ env.TAG }}
+          target_commitish: ${{ github.sha }}
+          files: PandaControl-${{ env.TAG }}.apk
           generate_release_notes: true
