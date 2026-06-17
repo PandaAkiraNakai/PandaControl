@@ -96,6 +96,15 @@ manageable = [
     "monochrome",
 ]
 
+# ─── Memorias (visor de solo lectura) ────────────────────────────────────
+#
+# Expone la tabla `memorias` de la base SQLite del CLI `mem` en
+# /api/v1/memorias para verla desde la app. Es SOLO LECTURA (abre la base en
+# modo ro) y NO toca Ollama ni embeddings: lista, no busca semánticamente.
+[memorias]
+enabled = true
+db_path = "~/.local/share/mem/memory.db"
+
 # ─── Updates ─────────────────────────────────────────────────────────────
 [updates]
 command = ["checkupdates"]

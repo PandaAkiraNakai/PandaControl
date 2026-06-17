@@ -22,6 +22,7 @@ import io.github.pandaakira.apppanda.data.models.HealthResponse
 import io.github.pandaakira.apppanda.data.models.LogsResponse
 import io.github.pandaakira.apppanda.data.models.MediaPlayersResponse
 import io.github.pandaakira.apppanda.data.models.MediaStatus
+import io.github.pandaakira.apppanda.data.models.MemoriasResponse
 import io.github.pandaakira.apppanda.data.models.MetricsResponse
 import io.github.pandaakira.apppanda.data.models.NetNeighborsResponse
 import io.github.pandaakira.apppanda.data.models.NetStatus
@@ -252,6 +253,11 @@ class PandaApi(
 
     suspend fun themes(): ThemesResponse =
         client.get(url("/api/v1/themes")).body()
+
+    /** Visor de memorias (solo lectura). `includeInactive` trae también las
+     *  archivadas (activo=0). No usa Ollama: es la lista cruda de la base. */
+    suspend fun memorias(includeInactive: Boolean = false): MemoriasResponse =
+        client.get(url("/api/v1/memorias" + if (includeInactive) "?all=1" else "")).body()
 
     /** Baja los bytes de una imagen de fondo de tema desde la carpeta del PC. */
     suspend fun themeImage(name: String): ByteArray {

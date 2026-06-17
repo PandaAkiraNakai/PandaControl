@@ -23,6 +23,7 @@ import io.github.pandaakira.apppanda.PandaApp
 import io.github.pandaakira.apppanda.ui.home.HomeScreen
 import io.github.pandaakira.apppanda.ui.media.MediaTabScreen
 import io.github.pandaakira.apppanda.ui.files.FilesScreen
+import io.github.pandaakira.apppanda.ui.memory.MemoriasScreen
 import io.github.pandaakira.apppanda.ui.more.AppsScreen
 import io.github.pandaakira.apppanda.ui.more.DisplaysScreen
 import io.github.pandaakira.apppanda.ui.more.GamesScreen
@@ -136,6 +137,7 @@ fun AppNav(app: PandaApp, theme: PandaTheme) {
             composable("games") { GamesScreen(app = app) }
 
             composable("services") { ServicesListScreen(app = app) }
+            composable("memorias") { MemoriasScreen(app = app) }
             composable("files") { FilesScreen(app = app) }
             composable("updates") { UpdatesScreen(app = app) }
             composable("network") { NetworkScreen(app = app) }

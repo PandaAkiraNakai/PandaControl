@@ -74,6 +74,7 @@ private data class ModuleEntry(
 fun ModulesScreen(onNavigate: (String) -> Unit) {
     val modules = listOf(
         ModuleEntry("services", "Servicios", PandaIcons.tune, LocalPandaColors.current.cyan),
+        ModuleEntry("memorias", "Memorias", PandaIcons.psychology, LocalPandaColors.current.magenta),
         ModuleEntry("updates", "Actualizar", PandaIcons.systemUpdate, LocalPandaColors.current.green),
         ModuleEntry("power", "Energía", PandaIcons.powerSettingsNew,
             MaterialTheme.colorScheme.error),

@@ -140,6 +140,11 @@ def load_config(path: str) -> dict:
     cfg["terminal"].setdefault("enabled", False)
     cfg["terminal"].setdefault("timeout_s", 20)
     cfg["terminal"].setdefault("max_output_kb", 64)
+    # Memorias: visor de solo lectura de la base de memoria (CLI `mem`).
+    # NO toca Ollama ni embeddings — solo lee la tabla SQLite y la lista.
+    cfg.setdefault("memorias", {})
+    cfg["memorias"].setdefault("enabled", True)
+    cfg["memorias"].setdefault("db_path", "~/.local/share/mem/memory.db")
     return cfg
 
 
@@ -1452,6 +1457,56 @@ def terminal_run(cfg: dict, cmd: str) -> dict:
     }
 
 
+# Memorias (visor de solo lectura) ─────────────────────────────────────────────
+
+def memorias_list(cfg: dict, include_inactive: bool = False) -> dict:
+    """Lee la tabla `memorias` de la base SQLite del CLI `mem` y la devuelve
+    ordenada por última actualización. SOLO lectura (modo ro) y SIN tocar
+    Ollama ni embeddings: es un visor, no el buscador semántico.
+
+    Orden: las activas primero, luego por `actualizado` descendente."""
+    mcfg = cfg.get("memorias") or {}
+    if not mcfg.get("enabled", True):
+        return {"enabled": False, "total": 0, "memorias": []}
+    db = os.path.expanduser(mcfg.get("db_path", "~/.local/share/mem/memory.db"))
+    if not os.path.exists(db):
+        return {"enabled": True, "error": f"base no encontrada: {db}",
+                "total": 0, "memorias": []}
+    where = "" if include_inactive else "WHERE activo = 1"
+    try:
+        # Conexión read-only por URI: nunca escribe ni crea la base.
+        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        try:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                f"""SELECT id, tipo, nombre, resumen, contenido, tags,
+                           activo, creado, actualizado, dispositivo
+                    FROM memorias {where}
+                    ORDER BY activo DESC, actualizado DESC""",
+            ).fetchall()
+        finally:
+            conn.close()
+    except sqlite3.Error as e:
+        return {"enabled": True, "error": f"sqlite: {e}",
+                "total": 0, "memorias": []}
+    mems = [
+        {
+            "id": r["id"],
+            "tipo": r["tipo"],
+            "nombre": r["nombre"],
+            "resumen": r["resumen"],
+            "contenido": r["contenido"],
+            "tags": r["tags"] or "",
+            "activo": r["activo"],
+            "creado": r["creado"],
+            "actualizado": r["actualizado"],
+            "dispositivo": r["dispositivo"],
+        }
+        for r in rows
+    ]
+    return {"enabled": True, "total": len(mems), "memorias": mems}
+
+
 # Power actions ──────────────────────────────────────────────────────────────
 
 POWER_CMDS = {
@@ -1800,6 +1855,7 @@ def main() -> None:
             scenes_list=scenes_list,
             scene_apply=scene_apply,
             terminal_run=terminal_run,
+            memorias_list=memorias_list,
             steam_running=steam_running,
             steam_close=steam_close,
             power_inhibit=power_inhibit,

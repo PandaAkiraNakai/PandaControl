@@ -446,3 +446,27 @@ data class SseEvent(
     val command: String? = null,
     @SerialName("timeout_s") val timeoutS: Int? = null,
 )
+
+// ─── Memorias (visor de solo lectura de la base del CLI `mem`) ───────────────
+
+@Serializable
+data class MemoriaRow(
+    val id: Int,
+    val tipo: String,
+    val nombre: String,
+    val resumen: String,
+    val contenido: String,
+    val tags: String = "",
+    val activo: Int = 1,
+    val creado: String,
+    val actualizado: String,
+    val dispositivo: String = "compartida",
+)
+
+@Serializable
+data class MemoriasResponse(
+    val enabled: Boolean = true,
+    val total: Int = 0,
+    val error: String? = null,
+    val memorias: List<MemoriaRow> = emptyList(),
+)

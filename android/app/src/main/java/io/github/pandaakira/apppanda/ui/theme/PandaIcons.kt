@@ -117,6 +117,10 @@ object PandaIcons {
         @Composable @ReadOnlyComposable get() = pick(
             Icons.Outlined.PowerSettingsNew, Icons.Filled.PowerSettingsNew,
             Icons.Rounded.PowerSettingsNew, Icons.Sharp.PowerSettingsNew)
+    val psychology: ImageVector
+        @Composable @ReadOnlyComposable get() = pick(
+            Icons.Outlined.Psychology, Icons.Filled.Psychology,
+            Icons.Rounded.Psychology, Icons.Sharp.Psychology)
     val settings: ImageVector
         @Composable @ReadOnlyComposable get() = pick(
             Icons.Outlined.Settings, Icons.Filled.Settings,

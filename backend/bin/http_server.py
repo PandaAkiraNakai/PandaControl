@@ -403,6 +403,8 @@ class _Handler(BaseHTTPRequestHandler):
         elif path == "/api/v1/themes/image":
             self._themes_image()
             return
+        elif path == "/api/v1/memorias":
+            body = self._memorias()
         elif path == "/api/v1/files":
             body = self._files_list()
         elif path == "/api/v1/files/download":
@@ -998,6 +1000,12 @@ class _Handler(BaseHTTPRequestHandler):
     def _vps_summary(self, alias: str) -> dict:
         out, err = self.api.vps_status(self.api.ctx.cfg, alias)
         return {"alias": alias, "output": out, "error": err}
+
+    def _memorias(self) -> dict:
+        qs = parse_qs(urlsplit(self.path).query)
+        include_inactive = qs.get("all", ["0"])[0] in ("1", "true")
+        return self.api.memorias_list(
+            self.api.ctx.cfg, include_inactive=include_inactive)
 
     def _games(self) -> dict:
         cfg = self.api.ctx.cfg
