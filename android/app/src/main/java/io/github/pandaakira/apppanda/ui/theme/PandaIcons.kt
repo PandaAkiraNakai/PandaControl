@@ -65,10 +65,26 @@ object PandaIcons {
         @Composable @ReadOnlyComposable get() = pick(
             Icons.Outlined.ChevronRight, Icons.Filled.ChevronRight,
             Icons.Rounded.ChevronRight, Icons.Sharp.ChevronRight)
+    val add: ImageVector
+        @Composable @ReadOnlyComposable get() = pick(
+            Icons.Outlined.Add, Icons.Filled.Add,
+            Icons.Rounded.Add, Icons.Sharp.Add)
+    val calendarMonth: ImageVector
+        @Composable @ReadOnlyComposable get() = pick(
+            Icons.Outlined.CalendarMonth, Icons.Filled.CalendarMonth,
+            Icons.Rounded.CalendarMonth, Icons.Sharp.CalendarMonth)
     val checklist: ImageVector
         @Composable @ReadOnlyComposable get() = pick(
             Icons.Outlined.Checklist, Icons.Filled.Checklist,
             Icons.Rounded.Checklist, Icons.Sharp.Checklist)
+    val deleteIcon: ImageVector
+        @Composable @ReadOnlyComposable get() = pick(
+            Icons.Outlined.Delete, Icons.Filled.Delete,
+            Icons.Rounded.Delete, Icons.Sharp.Delete)
+    val notifications: ImageVector
+        @Composable @ReadOnlyComposable get() = pick(
+            Icons.Outlined.Notifications, Icons.Filled.Notifications,
+            Icons.Rounded.Notifications, Icons.Sharp.Notifications)
     val close: ImageVector
         @Composable @ReadOnlyComposable get() = pick(
             Icons.Outlined.Close, Icons.Filled.Close,

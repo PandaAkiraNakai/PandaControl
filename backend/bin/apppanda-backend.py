@@ -30,7 +30,7 @@ import subprocess
 import sys
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -149,6 +149,12 @@ def load_config(path: str) -> dict:
     # daemon tiene que estar en el grupo `docker` (o tener acceso al socket).
     cfg.setdefault("docker", {})
     cfg["docker"].setdefault("enabled", True)
+    # Calendario self-hosted: eventos en una SQLite propia del daemon (CRUD
+    # completo). Los recordatorios se publican por SSE como cualquier alerta.
+    cfg.setdefault("calendario", {})
+    cfg["calendario"].setdefault("enabled", True)
+    cfg["calendario"].setdefault(
+        "db_path", "/var/lib/apppanda-backend/calendario.db")
     return cfg
 
 
@@ -554,6 +560,158 @@ class History:
                 "FROM metrics WHERE ts >= ? ORDER BY ts", (cutoff,),
             )
             return cur.fetchall()
+
+
+class Calendar:
+    """Calendario self-hosted: eventos en una SQLite propia del daemon, con
+    CRUD completo. Las fechas se guardan como texto ISO local: `YYYY-MM-DD`
+    para eventos de todo el día, `YYYY-MM-DDTHH:MM` para los que tienen hora.
+    """
+
+    _COLS = ("id", "titulo", "descripcion", "ubicacion", "inicio", "fin",
+             "todo_el_dia", "color", "recordatorio_min", "recordado",
+             "creado", "actualizado")
+
+    def __init__(self, path: str):
+        self.path = path
+        self._lock = threading.Lock()
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        self._conn = sqlite3.connect(path, check_same_thread=False)
+        self._conn.row_factory = sqlite3.Row
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("""
+            CREATE TABLE IF NOT EXISTS eventos (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                titulo           TEXT NOT NULL,
+                descripcion      TEXT,
+                ubicacion        TEXT,
+                inicio           TEXT NOT NULL,
+                fin              TEXT,
+                todo_el_dia      INTEGER NOT NULL DEFAULT 0,
+                color            TEXT,
+                recordatorio_min INTEGER,
+                recordado        INTEGER NOT NULL DEFAULT 0,
+                creado           TEXT NOT NULL,
+                actualizado      TEXT NOT NULL
+            )
+        """)
+        self._conn.commit()
+
+    @staticmethod
+    def _row(r: sqlite3.Row) -> dict:
+        return {
+            "id": r["id"],
+            "titulo": r["titulo"],
+            "descripcion": r["descripcion"] or "",
+            "ubicacion": r["ubicacion"] or "",
+            "inicio": r["inicio"],
+            "fin": r["fin"] or "",
+            "todo_el_dia": bool(r["todo_el_dia"]),
+            "color": r["color"] or "",
+            "recordatorio_min": r["recordatorio_min"],
+            "creado": r["creado"],
+            "actualizado": r["actualizado"],
+        }
+
+    def list(self, d_from: str, d_to: str) -> list[dict]:
+        """Eventos que solapan el rango de fechas [d_from, d_to] (YYYY-MM-DD)."""
+        with self._lock:
+            rows = self._conn.execute(
+                """SELECT * FROM eventos
+                   WHERE substr(inicio, 1, 10) <= ?
+                     AND substr(COALESCE(NULLIF(fin, ''), inicio), 1, 10) >= ?
+                   ORDER BY inicio""",
+                (d_to, d_from),
+            ).fetchall()
+        return [self._row(r) for r in rows]
+
+    def get(self, eid: int) -> dict | None:
+        with self._lock:
+            r = self._conn.execute(
+                "SELECT * FROM eventos WHERE id = ?", (eid,)).fetchone()
+        return self._row(r) if r else None
+
+    def create(self, e: dict) -> dict:
+        now = now_iso()
+        with self._lock:
+            cur = self._conn.execute(
+                """INSERT INTO eventos
+                   (titulo, descripcion, ubicacion, inicio, fin, todo_el_dia,
+                    color, recordatorio_min, recordado, creado, actualizado)
+                   VALUES (?,?,?,?,?,?,?,?,0,?,?)""",
+                (e["titulo"], e.get("descripcion", ""), e.get("ubicacion", ""),
+                 e["inicio"], e.get("fin") or None,
+                 1 if e.get("todo_el_dia") else 0, e.get("color", ""),
+                 e.get("recordatorio_min"), now, now),
+            )
+            self._conn.commit()
+            eid = cur.lastrowid
+        return self.get(eid)
+
+    def update(self, eid: int, e: dict) -> dict | None:
+        if self.get(eid) is None:
+            return None
+        # Cambiar inicio/hora/recordatorio resetea el flag de recordado.
+        with self._lock:
+            self._conn.execute(
+                """UPDATE eventos SET
+                     titulo=?, descripcion=?, ubicacion=?, inicio=?, fin=?,
+                     todo_el_dia=?, color=?, recordatorio_min=?, recordado=0,
+                     actualizado=?
+                   WHERE id=?""",
+                (e["titulo"], e.get("descripcion", ""), e.get("ubicacion", ""),
+                 e["inicio"], e.get("fin") or None,
+                 1 if e.get("todo_el_dia") else 0, e.get("color", ""),
+                 e.get("recordatorio_min"), now_iso(), eid),
+            )
+            self._conn.commit()
+        return self.get(eid)
+
+    def delete(self, eid: int) -> bool:
+        with self._lock:
+            cur = self._conn.execute("DELETE FROM eventos WHERE id = ?", (eid,))
+            self._conn.commit()
+            return cur.rowcount > 0
+
+    def pop_due_reminders(self, now: datetime) -> list[dict]:
+        """Devuelve los eventos cuyo recordatorio ya toca y los marca como
+        recordados. Los que ya se pasaron de largo (el daemon estuvo apagado)
+        se marcan en silencio para no re-escanearlos."""
+        fire: list[dict] = []
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM eventos "
+                "WHERE recordado = 0 AND recordatorio_min IS NOT NULL",
+            ).fetchall()
+            mark: list[int] = []
+            for r in rows:
+                inicio = _parse_dt(r["inicio"], bool(r["todo_el_dia"]))
+                if inicio is None:
+                    mark.append(r["id"])
+                    continue
+                remind_at = inicio - timedelta(minutes=int(r["recordatorio_min"]))
+                if remind_at <= now:
+                    mark.append(r["id"])
+                    # Solo notificar si no se pasó hace más de 2 min del inicio.
+                    if inicio >= now - timedelta(minutes=2):
+                        fire.append(self._row(r))
+            if mark:
+                self._conn.executemany(
+                    "UPDATE eventos SET recordado = 1 WHERE id = ?",
+                    [(i,) for i in mark],
+                )
+                self._conn.commit()
+        return fire
+
+
+def _parse_dt(s: str, all_day: bool) -> datetime | None:
+    """Parsea `YYYY-MM-DD` o `YYYY-MM-DDTHH:MM` a datetime local naïve."""
+    try:
+        if all_day or "T" not in s:
+            return datetime.strptime(s[:10], "%Y-%m-%d")
+        return datetime.strptime(s[:16], "%Y-%m-%dT%H:%M")
+    except (ValueError, TypeError):
+        return None
 
 
 # ─── Funciones puras (queries de sistema) ────────────────────────────────────
@@ -1733,7 +1891,7 @@ def execute_apply_updates() -> str:
 
 class Context:
     def __init__(self, cfg, metrics, history, audit, broker,
-                 alerts=None, sudo=None):
+                 alerts=None, sudo=None, calendar=None):
         self.cfg = cfg
         self.metrics = metrics
         self.history = history
@@ -1741,6 +1899,7 @@ class Context:
         self.broker = broker
         self.alerts = alerts
         self.sudo = sudo
+        self.calendar = calendar
 
 
 _ALERT_TITLES = {
@@ -1844,6 +2003,16 @@ def monitor_loop(ctx: Context) -> None:
             state["sessions"] = sessions_now
             state["sessions_seen"] = True
 
+            # Recordatorios de calendario: avisar de los eventos que tocan.
+            if ctx.calendar is not None:
+                for ev in ctx.calendar.pop_due_reminders(datetime.now()):
+                    cuando = ev["inicio"][11:16] if "T" in ev["inicio"] else "todo el día"
+                    ctx.broker.publish("calendario_recordatorio", {
+                        "title": ev["titulo"],
+                        "value_str": cuando,
+                    })
+                    ctx.audit.log("calendario_recordatorio", evento=ev["id"])
+
             now = time.time()
             if now - last_prune > 6 * 3600:
                 ctx.history.prune()
@@ -1924,6 +2093,8 @@ def main() -> None:
     metrics = Metrics()
     history = History(cfg["history"]["db_path"], cfg["history"]["retain_days"])
     audit = Audit(cfg["audit"]["log_path"])
+    calendar = (Calendar(cfg["calendario"]["db_path"])
+                if cfg["calendario"].get("enabled", True) else None)
 
     from http_server import EventBroker, start_http_server
     from sudo_broker import SudoBroker
@@ -1933,7 +2104,7 @@ def main() -> None:
     sudo = SudoBroker()
 
     ctx = Context(cfg, metrics, history, audit, broker,
-                  alerts=alerts, sudo=sudo)
+                  alerts=alerts, sudo=sudo, calendar=calendar)
 
     audit.log("start", pid=os.getpid(), config=CONFIG_PATH)
     print(

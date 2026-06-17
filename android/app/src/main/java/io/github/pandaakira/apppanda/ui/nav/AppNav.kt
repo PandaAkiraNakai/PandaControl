@@ -49,6 +49,7 @@ private sealed class Dest(
 ) {
     data object Home : Dest("home", "Inicio")
     data object Monitor : Dest("monitor", "Monitor")
+    data object Calendario : Dest("calendario", "Agenda")
     data object Control : Dest("control", "Control")
     data object Sistema : Dest("sistema", "Sistema")
 }
@@ -59,11 +60,13 @@ private sealed class Dest(
 private fun tabIcon(dest: Dest): ImageVector = when (dest) {
     Dest.Home -> PandaIcons.dashboard
     Dest.Monitor -> PandaIcons.analytics
+    Dest.Calendario -> PandaIcons.calendarMonth
     Dest.Control -> PandaIcons.settingsRemote
     Dest.Sistema -> PandaIcons.dns
 }
 
-private val tabs = listOf(Dest.Home, Dest.Monitor, Dest.Control, Dest.Sistema)
+private val tabs =
+    listOf(Dest.Home, Dest.Monitor, Dest.Calendario, Dest.Control, Dest.Sistema)
 
 @Composable
 fun AppNav(app: PandaApp, theme: PandaTheme) {
@@ -122,6 +125,9 @@ fun AppNav(app: PandaApp, theme: PandaTheme) {
                 )
             }
             composable(Dest.Monitor.route) { MonitorScreen(app = app) }
+            composable(Dest.Calendario.route) {
+                io.github.pandaakira.apppanda.ui.calendar.CalendarScreen(app = app)
+            }
             composable(Dest.Control.route) {
                 MediaTabScreen(app = app, onNavigate = { route -> navController.navigate(route) })
             }

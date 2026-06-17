@@ -20,6 +20,8 @@ import io.github.pandaakira.apppanda.data.models.GamesResponse
 import io.github.pandaakira.apppanda.data.models.GpusResponse
 import io.github.pandaakira.apppanda.data.models.HealthResponse
 import io.github.pandaakira.apppanda.data.models.LogsResponse
+import io.github.pandaakira.apppanda.data.models.CalEventReq
+import io.github.pandaakira.apppanda.data.models.CalendarResponse
 import io.github.pandaakira.apppanda.data.models.DockerLogsResponse
 import io.github.pandaakira.apppanda.data.models.DockerResponse
 import io.github.pandaakira.apppanda.data.models.MediaPlayersResponse
@@ -279,6 +281,19 @@ class PandaApi(
     /** action: "start" | "stop" | "restart". Requiere confirmación. */
     suspend fun dockerAction(name: String, act: String) =
         action("/api/v1/docker/$name/$act", confirm = true)
+
+    // ─── Calendario ─────────────────────────────────────────────────────────
+    suspend fun calendario(from: String, to: String): CalendarResponse =
+        client.get(url("/api/v1/calendario?from=$from&to=$to")).body()
+
+    suspend fun calendarioCreate(req: CalEventReq) =
+        action("/api/v1/calendario/create", body = req)
+
+    suspend fun calendarioUpdate(id: Int, req: CalEventReq) =
+        action("/api/v1/calendario/$id/update", body = req)
+
+    suspend fun calendarioDelete(id: Int) =
+        action("/api/v1/calendario/$id/delete")
 
     /** Baja los bytes de una imagen de fondo de tema desde la carpeta del PC. */
     suspend fun themeImage(name: String): ByteArray {

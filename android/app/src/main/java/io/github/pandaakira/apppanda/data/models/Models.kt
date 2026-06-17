@@ -518,3 +518,46 @@ data class DockerLogsResponse(
     val error: String? = null,
     val lines: List<String> = emptyList(),
 )
+
+// ─── Calendario ──────────────────────────────────────────────────────────────
+
+@Serializable
+data class CalEvent(
+    val id: Int,
+    val titulo: String,
+    val descripcion: String = "",
+    val ubicacion: String = "",
+    /** ISO local: "YYYY-MM-DD" (todo el día) o "YYYY-MM-DDTHH:MM". */
+    val inicio: String,
+    val fin: String = "",
+    @SerialName("todo_el_dia") val todoElDia: Boolean = false,
+    val color: String = "",
+    @SerialName("recordatorio_min") val recordatorioMin: Int? = null,
+    val creado: String = "",
+    val actualizado: String = "",
+) {
+    /** Porción de fecha (YYYY-MM-DD) del inicio. */
+    val fecha: String get() = inicio.take(10)
+    /** Hora HH:MM si el evento tiene hora, "" si es de todo el día. */
+    val hora: String get() = if (inicio.length >= 16) inicio.substring(11, 16) else ""
+}
+
+@Serializable
+data class CalendarResponse(
+    val enabled: Boolean = true,
+    val total: Int = 0,
+    val eventos: List<CalEvent> = emptyList(),
+)
+
+/** Body para crear/editar un evento. */
+@Serializable
+data class CalEventReq(
+    val titulo: String,
+    val inicio: String,
+    val descripcion: String = "",
+    val ubicacion: String = "",
+    val fin: String = "",
+    @SerialName("todo_el_dia") val todoElDia: Boolean = false,
+    val color: String = "",
+    @SerialName("recordatorio_min") val recordatorioMin: Int? = null,
+)

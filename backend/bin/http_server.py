@@ -407,6 +407,8 @@ class _Handler(BaseHTTPRequestHandler):
             body = self._memorias()
         elif path == "/api/v1/pedidos":
             body = self._pedidos()
+        elif path == "/api/v1/calendario":
+            body = self._calendario_list()
         elif path == "/api/v1/docker":
             body = self.api.docker_list(self.api.ctx.cfg)
         elif path.startswith("/api/v1/docker/") and path.endswith("/logs"):
@@ -495,6 +497,49 @@ class _Handler(BaseHTTPRequestHandler):
                 name, action = parts
                 result = api.docker_action(api.ctx.cfg, name, action)
                 body = {"name": name, "action": action, "result": result}
+            elif path == "/api/v1/calendario/create":
+                cal = api.ctx.calendar
+                if cal is None:
+                    self._err(404, "calendario deshabilitado")
+                    self._audit(path, 404)
+                    return
+                data = self._read_json_body()
+                evento = self._calendario_payload(data)
+                if evento is None:
+                    self._err(400, "faltan campos: titulo, inicio")
+                    self._audit(path, 400)
+                    return
+                body = {"result": "ok", "evento": cal.create(evento)}
+            elif (path.startswith("/api/v1/calendario/")
+                  and path.endswith("/update")):
+                cal = api.ctx.calendar
+                rest = path[len("/api/v1/calendario/"):-len("/update")]
+                if cal is None or not rest.isdigit():
+                    self._err(400, "id inválido")
+                    self._audit(path, 400)
+                    return
+                data = self._read_json_body()
+                evento = self._calendario_payload(data)
+                if evento is None:
+                    self._err(400, "faltan campos: titulo, inicio")
+                    self._audit(path, 400)
+                    return
+                updated = cal.update(int(rest), evento)
+                if updated is None:
+                    self._err(404, "evento no encontrado")
+                    self._audit(path, 404)
+                    return
+                body = {"result": "ok", "evento": updated}
+            elif (path.startswith("/api/v1/calendario/")
+                  and path.endswith("/delete")):
+                cal = api.ctx.calendar
+                rest = path[len("/api/v1/calendario/"):-len("/delete")]
+                if cal is None or not rest.isdigit():
+                    self._err(400, "id inválido")
+                    self._audit(path, 400)
+                    return
+                ok = cal.delete(int(rest))
+                body = {"result": "ok" if ok else "no encontrado"}
             elif path == "/api/v1/audio/sink":
                 data = self._read_json_body()
                 sink = (data.get("sink") or "").strip()
@@ -1032,6 +1077,40 @@ class _Handler(BaseHTTPRequestHandler):
         include_done = qs.get("all", ["0"])[0] in ("1", "true")
         return self.api.pedidos_list(
             self.api.ctx.cfg, include_done=include_done)
+
+    def _calendario_list(self) -> dict:
+        cal = self.api.ctx.calendar
+        if cal is None:
+            return {"enabled": False, "eventos": []}
+        qs = parse_qs(urlsplit(self.path).query)
+        d_from = (qs.get("from", [""])[0] or "0000-01-01")[:10]
+        d_to = (qs.get("to", [""])[0] or "9999-12-31")[:10]
+        eventos = cal.list(d_from, d_to)
+        return {"enabled": True, "total": len(eventos), "eventos": eventos}
+
+    @staticmethod
+    def _calendario_payload(data: dict) -> dict | None:
+        """Valida y normaliza el body de un evento. None si falta lo esencial."""
+        titulo = (data.get("titulo") or "").strip()
+        inicio = (data.get("inicio") or "").strip()
+        # inicio: YYYY-MM-DD (todo el día) o YYYY-MM-DDTHH:MM (con hora).
+        if not titulo or not re.match(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$", inicio):
+            return None
+        rec = data.get("recordatorio_min")
+        try:
+            rec = int(rec) if rec is not None and rec != "" else None
+        except (ValueError, TypeError):
+            rec = None
+        return {
+            "titulo": titulo[:200],
+            "descripcion": (data.get("descripcion") or "")[:2000],
+            "ubicacion": (data.get("ubicacion") or "")[:200],
+            "inicio": inicio,
+            "fin": (data.get("fin") or "").strip() or None,
+            "todo_el_dia": bool(data.get("todo_el_dia")),
+            "color": (data.get("color") or "")[:32],
+            "recordatorio_min": rec,
+        }
 
     def _games(self) -> dict:
         cfg = self.api.ctx.cfg

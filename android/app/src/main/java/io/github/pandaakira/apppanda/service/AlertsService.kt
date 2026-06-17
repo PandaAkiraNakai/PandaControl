@@ -197,6 +197,8 @@ class AlertsService : Service() {
             "session_new" -> "👤 Nueva sesión" to (evt.session ?: "")
             "boot" -> "🟢 PC iniciado" to (evt.hostname ?: "")
             "resume" -> "💤→🟢 Resume" to "gap ≈ ${evt.gapS?.toInt() ?: "?"} s"
+            "calendario_recordatorio" ->
+                "📅 ${evt.title ?: "Recordatorio"}" to (evt.valueStr ?: "")
             else -> return
         }
         showNotification(title, body)

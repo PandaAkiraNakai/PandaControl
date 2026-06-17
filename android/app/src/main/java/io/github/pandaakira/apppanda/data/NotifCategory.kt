@@ -35,6 +35,7 @@ enum class NotifCategory(
     SESSION_NEW("session_new", "Nueva sesión", NotifGroup.SYSTEM),
     BOOT("boot", "Inicio del PC", NotifGroup.SYSTEM),
     RESUME("resume", "Resume / wake", NotifGroup.SYSTEM),
+    CALENDARIO("calendario_recordatorio", "Recordatorios de agenda", NotifGroup.SYSTEM),
     ;
 
     companion object {

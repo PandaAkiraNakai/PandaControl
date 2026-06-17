@@ -114,6 +114,16 @@ db_path = "~/.local/share/mem/memory.db"
 [docker]
 enabled = true
 
+# ─── Calendario ──────────────────────────────────────────────────────────
+#
+# Calendario self-hosted: eventos en una SQLite propia del daemon, con CRUD
+# completo vía /api/v1/calendario. Los recordatorios se publican por SSE
+# (evento `calendario_recordatorio`) y la app los muestra como notificación.
+# La base la crea el daemon solo; tiene que poder escribir en db_path.
+[calendario]
+enabled = true
+db_path = "/var/lib/apppanda-backend/calendario.db"
+
 # ─── Updates ─────────────────────────────────────────────────────────────
 [updates]
 command = ["checkupdates"]
