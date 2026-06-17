@@ -96,14 +96,23 @@ manageable = [
     "monochrome",
 ]
 
-# ─── Memorias (visor de solo lectura) ────────────────────────────────────
+# ─── Memorias y pedidos (visor de solo lectura) ──────────────────────────
 #
-# Expone la tabla `memorias` de la base SQLite del CLI `mem` en
-# /api/v1/memorias para verla desde la app. Es SOLO LECTURA (abre la base en
-# modo ro) y NO toca Ollama ni embeddings: lista, no busca semánticamente.
+# Expone las tablas `memorias` y `pedidos` de la base SQLite del CLI `mem` en
+# /api/v1/memorias y /api/v1/pedidos. Es SOLO LECTURA (abre la base en modo
+# ro) y NO toca Ollama ni embeddings: lista, no busca semánticamente. Pedidos
+# reutiliza el mismo db_path (ambas tablas viven en el mismo archivo).
 [memorias]
 enabled = true
 db_path = "~/.local/share/mem/memory.db"
+
+# ─── Docker ──────────────────────────────────────────────────────────────
+#
+# Lista y gestiona contenedores en /api/v1/docker (start/stop/restart + logs).
+# El usuario que corre el daemon tiene que estar en el grupo `docker` (o tener
+# acceso al socket). Las acciones exigen el header X-Confirm: true.
+[docker]
+enabled = true
 
 # ─── Updates ─────────────────────────────────────────────────────────────
 [updates]

@@ -140,11 +140,15 @@ def load_config(path: str) -> dict:
     cfg["terminal"].setdefault("enabled", False)
     cfg["terminal"].setdefault("timeout_s", 20)
     cfg["terminal"].setdefault("max_output_kb", 64)
-    # Memorias: visor de solo lectura de la base de memoria (CLI `mem`).
-    # NO toca Ollama ni embeddings — solo lee la tabla SQLite y la lista.
+    # Memorias y pedidos: visor de la base del CLI `mem` (ambas tablas viven
+    # en la misma SQLite). Solo lectura, sin Ollama ni embeddings.
     cfg.setdefault("memorias", {})
     cfg["memorias"].setdefault("enabled", True)
     cfg["memorias"].setdefault("db_path", "~/.local/share/mem/memory.db")
+    # Docker: lista y gestiona contenedores vía el CLI `docker`. El usuario del
+    # daemon tiene que estar en el grupo `docker` (o tener acceso al socket).
+    cfg.setdefault("docker", {})
+    cfg["docker"].setdefault("enabled", True)
     return cfg
 
 
@@ -1507,6 +1511,117 @@ def memorias_list(cfg: dict, include_inactive: bool = False) -> dict:
     return {"enabled": True, "total": len(mems), "memorias": mems}
 
 
+def pedidos_list(cfg: dict, include_done: bool = False) -> dict:
+    """Lee la tabla `pedidos` de la misma base SQLite del CLI `mem`. Solo
+    lectura. Orden: en_progreso primero, luego pendiente; dentro de cada uno
+    por prioridad (urgente→baja) y por fecha de vencimiento ascendente.
+
+    Por defecto oculta los `hecho`/`cancelado`; `include_done` los trae."""
+    mcfg = cfg.get("memorias") or {}
+    db = os.path.expanduser(mcfg.get("db_path", "~/.local/share/mem/memory.db"))
+    if not os.path.exists(db):
+        return {"error": f"base no encontrada: {db}", "total": 0, "pedidos": []}
+    where = "" if include_done else "WHERE estado IN ('pendiente', 'en_progreso')"
+    try:
+        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        try:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                f"""SELECT id, titulo, detalle, estado, prioridad, vence,
+                           notas, creado, actualizado, completado
+                    FROM pedidos {where}
+                    ORDER BY
+                        CASE estado WHEN 'en_progreso' THEN 0 WHEN 'pendiente' THEN 1
+                                    WHEN 'hecho' THEN 2 ELSE 3 END,
+                        CASE prioridad WHEN 'urgente' THEN 0 WHEN 'alta' THEN 1
+                                       WHEN 'normal' THEN 2 ELSE 3 END,
+                        (vence IS NULL), vence ASC""",
+            ).fetchall()
+        finally:
+            conn.close()
+    except sqlite3.Error as e:
+        return {"error": f"sqlite: {e}", "total": 0, "pedidos": []}
+    pedidos = [
+        {
+            "id": r["id"],
+            "titulo": r["titulo"],
+            "detalle": r["detalle"] or "",
+            "estado": r["estado"],
+            "prioridad": r["prioridad"],
+            "vence": r["vence"] or "",
+            "notas": r["notas"] or "",
+            "creado": r["creado"],
+            "actualizado": r["actualizado"],
+            "completado": r["completado"] or "",
+        }
+        for r in rows
+    ]
+    return {"total": len(pedidos), "pedidos": pedidos}
+
+
+# Docker (lista y gestión de contenedores) ─────────────────────────────────────
+
+_DOCKER_NAME_RE = re.compile(r"[a-zA-Z0-9_.-]{1,128}")
+
+
+def docker_list(cfg: dict) -> dict:
+    """Lista todos los contenedores (incluidos los parados) vía `docker ps -a`.
+    Orden: corriendo primero, luego por nombre."""
+    if not (cfg.get("docker") or {}).get("enabled", True):
+        return {"enabled": False, "total": 0, "containers": []}
+    out = run(["docker", "ps", "-a", "--format", "{{json .}}"], timeout=10)
+    if out.startswith("<"):  # <timeout> / <no encontrado: docker> / <exit N>
+        return {"enabled": True, "error": out, "total": 0, "containers": []}
+    containers = []
+    for line in out.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            j = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        containers.append({
+            "id": (j.get("ID") or "")[:12],
+            "name": j.get("Names", ""),
+            "image": j.get("Image", ""),
+            "state": j.get("State", ""),     # running / exited / created / paused
+            "status": j.get("Status", ""),   # texto humano: "Up 3 hours"
+            "ports": j.get("Ports", ""),
+        })
+    containers.sort(key=lambda c: (c["state"] != "running", c["name"].lower()))
+    return {"enabled": True, "total": len(containers), "containers": containers}
+
+
+def docker_logs(cfg: dict, name: str, n: int = 200) -> dict:
+    """Últimas `n` líneas del log de un contenedor (stdout+stderr combinados)."""
+    if not (cfg.get("docker") or {}).get("enabled", True):
+        return {"error": "docker deshabilitado", "lines": []}
+    if not _DOCKER_NAME_RE.fullmatch(name or ""):
+        return {"error": "nombre de contenedor inválido", "lines": []}
+    n = max(1, min(int(n), 1000))
+    out = run(["docker", "logs", "--tail", str(n), name], timeout=15)
+    lines = out.splitlines()[-n:]
+    return {"name": name, "lines": lines}
+
+
+def docker_action(cfg: dict, name: str, action: str) -> str:
+    """start / stop / restart de un contenedor. Devuelve el output de docker."""
+    if not (cfg.get("docker") or {}).get("enabled", True):
+        return "docker deshabilitado"
+    if action not in ("start", "stop", "restart"):
+        return f"acción inválida: {action}"
+    if not _DOCKER_NAME_RE.fullmatch(name or ""):
+        return "nombre de contenedor inválido"
+    # docker imprime el nombre/ID del contenedor al tener éxito; un fallo
+    # empieza con "Error..." o con un marcador "<...>" de run(). Normalizamos
+    # a "ok" para que la app lo marque como acción exitosa.
+    out = run(["docker", action, name], timeout=30).strip()
+    if out.startswith("<") or out.lower().startswith("error"):
+        return out or "error"
+    return "ok"
+
+
 # Power actions ──────────────────────────────────────────────────────────────
 
 POWER_CMDS = {
@@ -1856,6 +1971,10 @@ def main() -> None:
             scene_apply=scene_apply,
             terminal_run=terminal_run,
             memorias_list=memorias_list,
+            pedidos_list=pedidos_list,
+            docker_list=docker_list,
+            docker_logs=docker_logs,
+            docker_action=docker_action,
             steam_running=steam_running,
             steam_close=steam_close,
             power_inhibit=power_inhibit,

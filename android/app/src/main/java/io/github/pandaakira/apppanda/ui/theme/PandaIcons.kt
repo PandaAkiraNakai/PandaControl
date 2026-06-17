@@ -65,10 +65,18 @@ object PandaIcons {
         @Composable @ReadOnlyComposable get() = pick(
             Icons.Outlined.ChevronRight, Icons.Filled.ChevronRight,
             Icons.Rounded.ChevronRight, Icons.Sharp.ChevronRight)
+    val checklist: ImageVector
+        @Composable @ReadOnlyComposable get() = pick(
+            Icons.Outlined.Checklist, Icons.Filled.Checklist,
+            Icons.Rounded.Checklist, Icons.Sharp.Checklist)
     val close: ImageVector
         @Composable @ReadOnlyComposable get() = pick(
             Icons.Outlined.Close, Icons.Filled.Close,
             Icons.Rounded.Close, Icons.Sharp.Close)
+    val inventory2: ImageVector
+        @Composable @ReadOnlyComposable get() = pick(
+            Icons.Outlined.Inventory2, Icons.Filled.Inventory2,
+            Icons.Rounded.Inventory2, Icons.Sharp.Inventory2)
     val cloud: ImageVector
         @Composable @ReadOnlyComposable get() = pick(
             Icons.Outlined.Cloud, Icons.Filled.Cloud,

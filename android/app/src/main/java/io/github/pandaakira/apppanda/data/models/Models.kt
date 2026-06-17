@@ -470,3 +470,51 @@ data class MemoriasResponse(
     val error: String? = null,
     val memorias: List<MemoriaRow> = emptyList(),
 )
+
+@Serializable
+data class PedidoRow(
+    val id: Int,
+    val titulo: String,
+    val detalle: String = "",
+    val estado: String,
+    val prioridad: String,
+    val vence: String = "",
+    val notas: String = "",
+    val creado: String,
+    val actualizado: String,
+    val completado: String = "",
+)
+
+@Serializable
+data class PedidosResponse(
+    val total: Int = 0,
+    val error: String? = null,
+    val pedidos: List<PedidoRow> = emptyList(),
+)
+
+// ─── Docker (contenedores) ───────────────────────────────────────────────────
+
+@Serializable
+data class DockerContainer(
+    val id: String = "",
+    val name: String,
+    val image: String = "",
+    val state: String = "",
+    val status: String = "",
+    val ports: String = "",
+)
+
+@Serializable
+data class DockerResponse(
+    val enabled: Boolean = true,
+    val total: Int = 0,
+    val error: String? = null,
+    val containers: List<DockerContainer> = emptyList(),
+)
+
+@Serializable
+data class DockerLogsResponse(
+    val name: String = "",
+    val error: String? = null,
+    val lines: List<String> = emptyList(),
+)

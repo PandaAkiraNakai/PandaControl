@@ -405,6 +405,15 @@ class _Handler(BaseHTTPRequestHandler):
             return
         elif path == "/api/v1/memorias":
             body = self._memorias()
+        elif path == "/api/v1/pedidos":
+            body = self._pedidos()
+        elif path == "/api/v1/docker":
+            body = self.api.docker_list(self.api.ctx.cfg)
+        elif path.startswith("/api/v1/docker/") and path.endswith("/logs"):
+            name = path[len("/api/v1/docker/"):-len("/logs")]
+            qs = parse_qs(urlsplit(self.path).query)
+            n = int(qs.get("n", ["200"])[0] or 200)
+            body = self.api.docker_logs(self.api.ctx.cfg, name, n)
         elif path == "/api/v1/files":
             body = self._files_list()
         elif path == "/api/v1/files/download":
@@ -430,6 +439,7 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/v1/updates/apply",
         "/api/v1/files/delete",
         "/api/v1/games/close",
+        "/api/v1/docker/",
     )
 
     def _dispatch_post(self):
@@ -475,6 +485,16 @@ class _Handler(BaseHTTPRequestHandler):
                 unit, action = parts
                 result = api.execute_svc(unit, action, api.ctx.cfg)
                 body = {"unit": unit, "action": action, "result": result}
+            elif path.startswith("/api/v1/docker/"):
+                rest = path[len("/api/v1/docker/"):]
+                parts = rest.rsplit("/", 1)
+                if len(parts) != 2:
+                    self._err(400, "expected /docker/<name>/<action>")
+                    self._audit(path, 400)
+                    return
+                name, action = parts
+                result = api.docker_action(api.ctx.cfg, name, action)
+                body = {"name": name, "action": action, "result": result}
             elif path == "/api/v1/audio/sink":
                 data = self._read_json_body()
                 sink = (data.get("sink") or "").strip()
@@ -1006,6 +1026,12 @@ class _Handler(BaseHTTPRequestHandler):
         include_inactive = qs.get("all", ["0"])[0] in ("1", "true")
         return self.api.memorias_list(
             self.api.ctx.cfg, include_inactive=include_inactive)
+
+    def _pedidos(self) -> dict:
+        qs = parse_qs(urlsplit(self.path).query)
+        include_done = qs.get("all", ["0"])[0] in ("1", "true")
+        return self.api.pedidos_list(
+            self.api.ctx.cfg, include_done=include_done)
 
     def _games(self) -> dict:
         cfg = self.api.ctx.cfg

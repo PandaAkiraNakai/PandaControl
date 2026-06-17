@@ -20,9 +20,12 @@ import io.github.pandaakira.apppanda.data.models.GamesResponse
 import io.github.pandaakira.apppanda.data.models.GpusResponse
 import io.github.pandaakira.apppanda.data.models.HealthResponse
 import io.github.pandaakira.apppanda.data.models.LogsResponse
+import io.github.pandaakira.apppanda.data.models.DockerLogsResponse
+import io.github.pandaakira.apppanda.data.models.DockerResponse
 import io.github.pandaakira.apppanda.data.models.MediaPlayersResponse
 import io.github.pandaakira.apppanda.data.models.MediaStatus
 import io.github.pandaakira.apppanda.data.models.MemoriasResponse
+import io.github.pandaakira.apppanda.data.models.PedidosResponse
 import io.github.pandaakira.apppanda.data.models.MetricsResponse
 import io.github.pandaakira.apppanda.data.models.NetNeighborsResponse
 import io.github.pandaakira.apppanda.data.models.NetStatus
@@ -258,6 +261,24 @@ class PandaApi(
      *  archivadas (activo=0). No usa Ollama: es la lista cruda de la base. */
     suspend fun memorias(includeInactive: Boolean = false): MemoriasResponse =
         client.get(url("/api/v1/memorias" + if (includeInactive) "?all=1" else "")).body()
+
+    /** Visor de pedidos/tareas (solo lectura). `includeDone` trae también los
+     *  hechos y cancelados. */
+    suspend fun pedidos(includeDone: Boolean = false): PedidosResponse =
+        client.get(url("/api/v1/pedidos" + if (includeDone) "?all=1" else "")).body()
+
+    // ─── Docker (contenedores) ──────────────────────────────────────────────
+    suspend fun dockerList(): DockerResponse =
+        client.get(url("/api/v1/docker")).body()
+
+    suspend fun dockerLogs(name: String, n: Int = 200): DockerLogsResponse {
+        val enc = java.net.URLEncoder.encode(name, "UTF-8")
+        return client.get(url("/api/v1/docker/$enc/logs?n=$n")).body()
+    }
+
+    /** action: "start" | "stop" | "restart". Requiere confirmación. */
+    suspend fun dockerAction(name: String, act: String) =
+        action("/api/v1/docker/$name/$act", confirm = true)
 
     /** Baja los bytes de una imagen de fondo de tema desde la carpeta del PC. */
     suspend fun themeImage(name: String): ByteArray {
