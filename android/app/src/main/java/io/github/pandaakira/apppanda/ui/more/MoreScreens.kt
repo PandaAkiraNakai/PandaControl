@@ -520,7 +520,7 @@ fun UpdatesScreen(app: PandaApp) {
     }
 }
 
-// ─── Displays (niri) ─────────────────────────────────────────────────────────
+// ─── Displays (niri + KDE Plasma) ────────────────────────────────────────────
 
 @Composable
 fun DisplaysScreen(app: PandaApp) {
@@ -560,7 +560,12 @@ fun DisplaysScreen(app: PandaApp) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
-        item { ScreenHeader("DISPLAYS :: niri", "tap output = toggle on/off") }
+        val compositorLabel = when (data?.compositor) {
+            "kde" -> "plasma"
+            "niri" -> "niri"
+            else -> "?"
+        }
+        item { ScreenHeader("DISPLAYS :: $compositorLabel", "tap output = toggle on/off") }
 
         // Escenas: presets que combinan outputs + foco + audio de un toque.
         if (scenes.isNotEmpty()) {

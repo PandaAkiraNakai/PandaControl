@@ -787,7 +787,34 @@ def _niri_run(args: list[str], timeout: int = 5) -> tuple[int, str, str]:
     return proc.returncode, proc.stdout or "", (proc.stderr or "").strip()
 
 
-def niri_outputs() -> tuple[list[dict], str | None]:
+def _process_running(comm: str) -> bool:
+    """True si hay un proceso vivo cuyo /proc/<pid>/comm sea exactamente `comm`."""
+    try:
+        pids = [p for p in os.listdir("/proc") if p.isdigit()]
+    except OSError:
+        return False
+    for pid in pids:
+        try:
+            with open(f"/proc/{pid}/comm") as f:
+                if f.read().strip() == comm:
+                    return True
+        except OSError:
+            continue
+    return False
+
+
+def active_compositor() -> str:
+    """'niri', 'kde' o 'unknown'. Se resuelve en cada llamada (no se cachea)
+    porque el usuario alterna de sesión (niri <-> Plasma) sin reiniciar el
+    backend, y este puede quedar corriendo de una sesión a otra."""
+    if "NIRI_SOCKET" in niri_socket_env():
+        return "niri"
+    if _process_running("kwin_wayland") or _process_running("kwin_x11"):
+        return "kde"
+    return "unknown"
+
+
+def _niri_outputs() -> tuple[list[dict], str | None]:
     rc, stdout, stderr = _niri_run(["-j", "outputs"])
     if rc != 0:
         return [], (stderr or stdout or f"exit {rc}")[:300]
@@ -1319,19 +1346,119 @@ def steam_games(cfg: dict) -> list[dict]:
 
 # ─── Acciones (Fase 3) ───────────────────────────────────────────────────────
 
-def niri_set_output(name: str, on: bool) -> str:
+def _niri_set_output(name: str, on: bool) -> str:
     rc, stdout, stderr = _niri_run(["output", name, "on" if on else "off"])
     if rc == 0:
         return "ok"
     return (stderr or stdout or f"exit {rc}")[:300]
 
 
-def niri_dpms(on: bool) -> str:
+def _niri_dpms(on: bool) -> str:
     action = "power-on-monitors" if on else "power-off-monitors"
     rc, stdout, stderr = _niri_run(["action", action])
     if rc == 0:
         return "ok"
     return (stderr or stdout or f"exit {rc}")[:300]
+
+
+# ─── KDE Plasma (kscreen-doctor) ─────────────────────────────────────────────
+
+def _kde_session_env() -> dict:
+    """kscreen-doctor habla con KWin por D-Bus; el backend corre como
+    servicio systemd sin WAYLAND_DISPLAY/DBUS_SESSION_BUS_ADDRESS propios,
+    y sin esto kscreen-doctor aborta (SIGABRT) en vez de fallar limpio."""
+    uid = os.getuid()
+    runtime_dir = f"/run/user/{uid}"
+    env = {**os.environ, "LC_ALL": "C", "XDG_RUNTIME_DIR": runtime_dir}
+    bus = Path(runtime_dir) / "bus"
+    if bus.exists():
+        env["DBUS_SESSION_BUS_ADDRESS"] = f"unix:path={bus}"
+    displays = sorted(
+        (p for p in Path(runtime_dir).glob("wayland-*") if not p.name.endswith(".lock")),
+        key=lambda p: p.stat().st_mtime, reverse=True,
+    )
+    if displays:
+        env["WAYLAND_DISPLAY"] = displays[0].name
+    return env
+
+
+def _kscreen_run(args: list[str], timeout: int = 5) -> tuple[int, str, str]:
+    try:
+        proc = subprocess.run(
+            ["kscreen-doctor", *args],
+            capture_output=True, text=True, timeout=timeout, env=_kde_session_env(),
+        )
+    except subprocess.TimeoutExpired:
+        return -1, "", "timeout consultando kscreen-doctor"
+    except FileNotFoundError:
+        return -1, "", "kscreen-doctor no encontrado"
+    return proc.returncode, proc.stdout or "", (proc.stderr or "").strip()
+
+
+def _kde_outputs() -> tuple[list[dict], str | None]:
+    rc, stdout, stderr = _kscreen_run(["-j"])
+    if rc != 0:
+        return [], (stderr or stdout or f"exit {rc}")[:300]
+    try:
+        data = json.loads(stdout)
+    except json.JSONDecodeError as e:
+        return [], f"JSON inválido: {e}"
+    out = []
+    for info in sorted(data.get("outputs", []), key=lambda o: o.get("name") or ""):
+        if not info.get("connected"):
+            continue
+        name = info.get("name")
+        if not name:
+            continue
+        out.append({"name": name, "label": name, "on": bool(info.get("enabled"))})
+    return out, None
+
+
+def _kde_set_output(name: str, on: bool) -> str:
+    action = "enable" if on else "disable"
+    rc, stdout, stderr = _kscreen_run([f"output.{name}.{action}"])
+    if rc == 0:
+        return "ok"
+    return (stderr or stdout or f"exit {rc}")[:300]
+
+
+def _kde_dpms(on: bool) -> str:
+    rc, stdout, stderr = _kscreen_run(["--dpms", "on" if on else "off"])
+    if rc == 0:
+        return "ok"
+    return (stderr or stdout or f"exit {rc}")[:300]
+
+
+# ─── Pantallas (dispatch niri / KDE) ─────────────────────────────────────────
+# Punto único que usa el resto del backend para listar/prender/apagar
+# monitores. Elige backend según el compositor activo en este momento, así
+# la misma app funciona tanto en niri como en Plasma sin reconfigurar nada.
+
+def screen_outputs() -> tuple[list[dict], str | None]:
+    comp = active_compositor()
+    if comp == "kde":
+        return _kde_outputs()
+    if comp == "niri":
+        return _niri_outputs()
+    return [], "no se detectó niri ni KDE Plasma corriendo"
+
+
+def screen_set_output(name: str, on: bool) -> str:
+    comp = active_compositor()
+    if comp == "kde":
+        return _kde_set_output(name, on)
+    if comp == "niri":
+        return _niri_set_output(name, on)
+    return "no se detectó niri ni KDE Plasma corriendo"
+
+
+def screen_dpms(on: bool) -> str:
+    comp = active_compositor()
+    if comp == "kde":
+        return _kde_dpms(on)
+    if comp == "niri":
+        return _niri_dpms(on)
+    return "no se detectó niri ni KDE Plasma corriendo"
 
 
 # Mapa de comandos expuestos al cliente Android (sección Comandos del tab
@@ -1362,7 +1489,7 @@ def niri_cmd(cmd: str, output: str | None = None) -> str:
     # Las acciones de niri (fullscreen, columnas, workspaces…) operan sobre el
     # monitor enfocado, así que con 3 pantallas hay que mover el foco primero.
     if output:
-        valid = {o["name"] for o in niri_outputs()[0]}
+        valid = {o["name"] for o in _niri_outputs()[0]}
         if output not in valid:
             return f"monitor desconocido: {output}"
         rc, _, stderr = _niri_run(["action", "focus-monitor", output])
@@ -1565,15 +1692,17 @@ def scene_apply(cfg: dict, name: str) -> str:
     errors = []
     # Apagar primero (por si se libera una salida), luego encender.
     for o in spec.get("outputs_off", []) or []:
-        r = niri_set_output(o, False)
+        r = screen_set_output(o, False)
         if r != "ok":
             errors.append(f"off {o}: {r}")
     for o in spec.get("outputs_on", []) or []:
-        r = niri_set_output(o, True)
+        r = screen_set_output(o, True)
         if r != "ok":
             errors.append(f"on {o}: {r}")
     focus = spec.get("focus")
-    if focus:
+    if focus and active_compositor() == "niri":
+        # "Fijar" un monitor es un concepto de tiling (niri); KDE Plasma no
+        # tiene equivalente, así que en esa sesión se omite sin error.
         rc, _, stderr = _niri_run(["action", "focus-monitor", focus])
         if rc != 0:
             errors.append(f"focus {focus}: {(stderr or rc)}")
@@ -2120,9 +2249,10 @@ def main() -> None:
             top_processes=top_processes,
             list_failed_services=list_failed_services,
             list_sessions=list_sessions,
-            niri_outputs=niri_outputs,
-            niri_set_output=niri_set_output,
-            niri_dpms=niri_dpms,
+            niri_outputs=screen_outputs,
+            niri_set_output=screen_set_output,
+            niri_dpms=screen_dpms,
+            active_compositor=active_compositor,
             niri_cmd=niri_cmd,
             audio_sinks=audio_sinks,
             audio_default_sink=audio_default_sink,

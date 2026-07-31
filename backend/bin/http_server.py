@@ -1040,7 +1040,7 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _screens(self) -> dict:
         outputs, err = self.api.niri_outputs()
-        return {"outputs": outputs, "error": err}
+        return {"outputs": outputs, "error": err, "compositor": self.api.active_compositor()}
 
     def _media_players(self) -> dict:
         cfg = self.api.ctx.cfg

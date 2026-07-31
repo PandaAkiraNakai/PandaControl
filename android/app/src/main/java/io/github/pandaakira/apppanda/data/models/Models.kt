@@ -228,6 +228,7 @@ data class NiriOutput(val name: String, val label: String, val on: Boolean)
 data class ScreensResponse(
     val outputs: List<NiriOutput>,
     val error: String? = null,
+    val compositor: String? = null,
 )
 
 @Serializable
