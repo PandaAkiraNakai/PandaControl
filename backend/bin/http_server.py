@@ -918,8 +918,18 @@ class _Handler(BaseHTTPRequestHandler):
             return
         rid = path[len("/api/v1/sudo/"):-len("/wait")]
         q = self._parse_qs()
+        # Tope de seguridad contra un ?timeout= absurdo, pero nunca por
+        # debajo de approval_timeout_s: si alguien lo sube por encima de
+        # 120 en el config, sudo-app-askpass.py pide exactamente ese valor
+        # acá, y antes el clamp fijo a 120 lo cortaba en silencio sin que
+        # el askpass se enterara de que su timeout configurado no se
+        # respetó.
+        configured_s = float(
+            self.api.ctx.cfg.get("sudo_app", {}).get("approval_timeout_s", 60),
+        )
+        hard_cap = max(120.0, configured_s + 10.0)
         try:
-            timeout_s = max(1.0, min(120.0, float(q.get("timeout", "60"))))
+            timeout_s = max(1.0, min(hard_cap, float(q.get("timeout", "60"))))
         except ValueError:
             timeout_s = 60.0
         entry = self.api.ctx.sudo.wait_for_decision(rid, timeout_s)
