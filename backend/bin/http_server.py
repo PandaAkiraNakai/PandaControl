@@ -1816,7 +1816,24 @@ def start_http_server(api, broker: EventBroker, *,
         },
     )
 
-    server = ThreadingHTTPServer((host, port), handler_cls)
+    # network-online.target no garantiza que la IP de `host` (típicamente la
+    # de tailscale0) ya esté asignada cuando systemd arranca el servicio —
+    # sin retry acá, un OSError (EADDRNOTAVAIL) tumba el proceso entero
+    # antes de arrancar monitor_loop/fast_tick_loop y perdemos métricas y
+    # el evento de boot durante toda la ventana de RestartSec.
+    server = None
+    bind_deadline = time.monotonic() + 30
+    while server is None:
+        try:
+            server = ThreadingHTTPServer((host, port), handler_cls)
+        except OSError as e:
+            if time.monotonic() >= bind_deadline:
+                raise
+            print(
+                f"[http] bind a {host}:{port} falló ({e}), reintentando…",
+                file=sys.stderr,
+            )
+            time.sleep(2)
     server.daemon_threads = True
     threading.Thread(
         target=server.serve_forever,
