@@ -72,6 +72,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.Json
+import java.io.InputStream
+import io.ktor.utils.io.writeFully
 
 /** Fuente de deltas de mouse para [PandaApi.mouseStream]. */
 fun interface MouseDeltaSource {
@@ -319,10 +321,15 @@ class PandaApi(
         return client.get(url("/api/v1/files/download?dir=$dirIdx&rel=$r&name=$encoded"))
     }
 
-    /** Sube bytes con header X-Filename y Content-Length para que el daemon
-     *  los stree al disco. X-Dir/X-Rel eligen la carpeta destino. */
+    /**
+     * Sube un archivo en streaming (sin cargarlo entero a memoria) con
+     * header X-Filename y Content-Length para que el daemon lo streamee al
+     * disco. `source` se invoca una sola vez y su stream se cierra al
+     * terminar. X-Dir/X-Rel eligen la carpeta destino.
+     */
     suspend fun filesUpload(
-        name: String, bytes: ByteArray, dirIdx: Int = 0, rel: String = "",
+        name: String, length: Long, source: () -> InputStream,
+        dirIdx: Int = 0, rel: String = "",
     ): FileUploadResponse {
         val encoded = java.net.URLEncoder.encode(name, "UTF-8")
         val r = java.net.URLEncoder.encode(rel, "UTF-8")
@@ -330,9 +337,22 @@ class PandaApi(
             header("X-Filename", encoded)
             header("X-Dir", dirIdx.toString())
             header("X-Rel", r)
-            header(HttpHeaders.ContentLength, bytes.size.toString())
+            header(HttpHeaders.ContentLength, length.toString())
             contentType(ContentType.Application.OctetStream)
-            setBody(bytes)
+            setBody(object : OutgoingContent.WriteChannelContent() {
+                override val contentLength: Long = length
+                override suspend fun writeTo(channel: ByteWriteChannel) {
+                    source().use { input ->
+                        val buf = ByteArray(64 * 1024)
+                        while (true) {
+                            val n = input.read(buf)
+                            if (n < 0) break
+                            channel.writeFully(buf, 0, n)
+                        }
+                    }
+                    channel.flush()
+                }
+            })
         }.body()
     }
 

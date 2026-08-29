@@ -578,12 +578,21 @@ private suspend fun uploadFromPhone(
         if (size > maxBytes) {
             return@withContext false to "archivo > ${maxMb} MB"
         }
-        val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
-            ?: return@withContext false to "no pude leer el archivo"
-        if (bytes.size.toLong() > maxBytes) {
-            return@withContext false to "archivo > ${maxMb} MB"
+        // Streamea directo desde el content provider: nunca carga el
+        // archivo entero a memoria (un video de cientos de MB reventaba el
+        // heap acá antes). Requiere que el provider informe el tamaño
+        // (obligatorio para ACTION_OPEN_DOCUMENT); si no lo informa, cae al
+        // buffer en memoria como antes — caso raro con el picker usado acá.
+        val res = if (size > 0) {
+            api.filesUpload(displayName, size, { resolver.openInputStream(uri)!! }, dirIdx, rel)
+        } else {
+            val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: return@withContext false to "no pude leer el archivo"
+            if (bytes.size.toLong() > maxBytes) {
+                return@withContext false to "archivo > ${maxMb} MB"
+            }
+            api.filesUpload(displayName, bytes.size.toLong(), { bytes.inputStream() }, dirIdx, rel)
         }
-        val res = api.filesUpload(displayName, bytes, dirIdx, rel)
         if (res.result == "ok") {
             true to "subido como ${res.savedAs ?: displayName}"
         } else {
