@@ -34,6 +34,12 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 VERSION = "0.1.0"
 
+# Techo de tamaño para bodies JSON (todos los endpoints salvo el de subida de
+# archivos, que tiene su propio límite configurable max_upload_mb). De sobra
+# para cualquier payload real de esta API; evita que un POST autenticado
+# declare un Content-Length de varios GB y lo cargue entero a RAM.
+MAX_JSON_BODY_BYTES = 2 * 1024 * 1024
+
 
 class EventBroker:
     """Registro thread-safe de suscriptores SSE.
@@ -463,6 +469,21 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/api/v1/input/mouse/stream":
             self._input_mouse_stream()
             return
+
+        # El upload de archivos tiene su propio límite (max_upload_mb, hasta
+        # 500 MB por default) y postea el body directo a disco en streaming;
+        # todo lo demás son bodies JSON chicos, así que van contra el techo
+        # general de MAX_JSON_BODY_BYTES antes de leer un solo byte.
+        if path != "/api/v1/files/upload":
+            try:
+                declared_len = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                declared_len = 0
+            if declared_len > MAX_JSON_BODY_BYTES:
+                self._err(413, f"body too large (max {MAX_JSON_BODY_BYTES} bytes)")
+                self._audit(path, 413)
+                self.close_connection = True
+                return
 
         api = self.api
         body: dict = {}
