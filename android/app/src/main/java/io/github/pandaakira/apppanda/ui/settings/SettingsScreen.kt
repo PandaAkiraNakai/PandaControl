@@ -442,15 +442,32 @@ private fun NotifToggleRow(
 @Composable
 private fun PermissionsCard() {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
 
-    val notifGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+    fun checkNotifGranted() = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
         ContextCompat.checkSelfPermission(
             context, Manifest.permission.POST_NOTIFICATIONS,
         ) == PackageManager.PERMISSION_GRANTED
 
     val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
-    var batteryIgnored by remember {
-        mutableStateOf(pm?.isIgnoringBatteryOptimizations(context.packageName) == true)
+    fun checkBatteryIgnored() = pm?.isIgnoringBatteryOptimizations(context.packageName) == true
+
+    var notifGranted by remember { mutableStateOf(checkNotifGranted()) }
+    var batteryIgnored by remember { mutableStateOf(checkBatteryIgnored()) }
+
+    // startActivity() es async: el diálogo/ajuste del sistema todavía no se
+    // mostró cuando la corrutina del onClick sigue — sin esto el "✓
+    // permitido" nunca reflejaba lo que el usuario realmente eligió hasta
+    // salir y reentrar a Ajustes.
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                notifGranted = checkNotifGranted()
+                batteryIgnored = checkBatteryIgnored()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     PandaCard(title = "PERMISOS", accent = LocalPandaColors.current.yellow) {
@@ -481,7 +498,6 @@ private fun PermissionsCard() {
                     ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     context.startActivity(fallback)
                 }
-                batteryIgnored = pm?.isIgnoringBatteryOptimizations(context.packageName) == true
             },
         )
         Spacer(Modifier.height(8.dp))
