@@ -75,12 +75,17 @@ class Settings(private val context: Context) {
         val THEME_SPEC = stringPreferencesKey("theme_spec")
     }
 
+    // El token de cada perfil se cifra/descifra acá, en el borde con el JSON
+    // persistido — el resto de la clase (y toda la UI) sigue trabajando con
+    // Profile en texto plano en memoria, que es lo que necesita para armar
+    // el header Authorization.
     private fun decodeProfiles(raw: String?): List<Profile> =
         if (raw.isNullOrBlank()) emptyList()
         else runCatching { pjson.decodeFromString(profileListSerializer, raw) }.getOrDefault(emptyList())
+            .map { it.copy(token = TokenCrypto.decrypt(it.token)) }
 
     private fun encodeProfiles(list: List<Profile>): String =
-        pjson.encodeToString(profileListSerializer, list)
+        pjson.encodeToString(profileListSerializer, list.map { it.copy(token = TokenCrypto.encrypt(it.token)) })
 
     /** Resuelve cuál perfil está activo dado un set de prefs. Si el id
      *  guardado ya no existe (se borró), cae al primero de la lista. */
