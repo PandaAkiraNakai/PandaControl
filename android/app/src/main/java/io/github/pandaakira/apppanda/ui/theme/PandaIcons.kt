@@ -173,6 +173,14 @@ object PandaIcons {
         @Composable @ReadOnlyComposable get() = pick(
             Icons.Outlined.Wifi, Icons.Filled.Wifi,
             Icons.Rounded.Wifi, Icons.Sharp.Wifi)
+    val visibility: ImageVector
+        @Composable @ReadOnlyComposable get() = pick(
+            Icons.Outlined.Visibility, Icons.Filled.Visibility,
+            Icons.Rounded.Visibility, Icons.Sharp.Visibility)
+    val visibilityOff: ImageVector
+        @Composable @ReadOnlyComposable get() = pick(
+            Icons.Outlined.VisibilityOff, Icons.Filled.VisibilityOff,
+            Icons.Rounded.VisibilityOff, Icons.Sharp.VisibilityOff)
 }
 
 /** Convierte el string del tema ("outlined"/"filled"/...) a [IconStyle]. */

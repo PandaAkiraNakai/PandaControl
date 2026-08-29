@@ -28,6 +28,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -47,6 +49,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import io.github.pandaakira.apppanda.PandaApp
@@ -57,6 +61,7 @@ import io.github.pandaakira.apppanda.data.Profile
 import io.github.pandaakira.apppanda.service.AlertsService
 import io.github.pandaakira.apppanda.ui.components.PandaCard
 import io.github.pandaakira.apppanda.ui.components.ScreenHeader
+import io.github.pandaakira.apppanda.ui.theme.PandaIcons
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -204,6 +209,7 @@ private fun ProfileEditorCard(
     var host by remember(initial.id) { mutableStateOf("") }
     var port by remember(initial.id) { mutableStateOf("8890") }
     var token by remember(initial.id) { mutableStateOf(initial.token) }
+    var tokenVisible by remember(initial.id) { mutableStateOf(false) }
     var testResult by remember(initial.id) { mutableStateOf<String?>(null) }
     var testOk by remember(initial.id) { mutableStateOf<Boolean?>(null) }
     var busy by remember(initial.id) { mutableStateOf(false) }
@@ -250,6 +256,16 @@ private fun ProfileEditorCard(
             value = token, onValueChange = { token = it },
             label = { Text("Bearer token (opcional con Tailscale auth)") },
             singleLine = true,
+            visualTransformation = if (tokenVisible) VisualTransformation.None
+                                   else PasswordVisualTransformation(),
+            trailingIcon = {
+                IconButton(onClick = { tokenVisible = !tokenVisible }) {
+                    Icon(
+                        if (tokenVisible) PandaIcons.visibilityOff else PandaIcons.visibility,
+                        contentDescription = if (tokenVisible) "Ocultar token" else "Mostrar token",
+                    )
+                }
+            },
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(8.dp))

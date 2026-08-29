@@ -12,6 +12,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -26,10 +28,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import io.github.pandaakira.apppanda.PandaApp
 import io.github.pandaakira.apppanda.data.PandaApi
 import io.github.pandaakira.apppanda.data.Profile
+import io.github.pandaakira.apppanda.ui.theme.PandaIcons
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -41,6 +46,7 @@ fun OnboardingScreen(app: PandaApp, onSaved: () -> Unit) {
     var host by remember { mutableStateOf("") }
     var port by remember { mutableStateOf("8890") }
     var token by remember { mutableStateOf("") }
+    var tokenVisible by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<String?>(null) }
     var testOk by remember { mutableStateOf<Boolean?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -118,6 +124,16 @@ fun OnboardingScreen(app: PandaApp, onSaved: () -> Unit) {
             label = { Text("Bearer token (opcional con Tailscale)") },
             placeholder = { Text("hex 64 chars — déjalo vacío si el PC usa Tailscale auth") },
             singleLine = true,
+            visualTransformation = if (tokenVisible) VisualTransformation.None
+                                   else PasswordVisualTransformation(),
+            trailingIcon = {
+                IconButton(onClick = { tokenVisible = !tokenVisible }) {
+                    Icon(
+                        if (tokenVisible) PandaIcons.visibilityOff else PandaIcons.visibility,
+                        contentDescription = if (tokenVisible) "Ocultar token" else "Mostrar token",
+                    )
+                }
+            },
             modifier = Modifier.fillMaxWidth(),
         )
 
