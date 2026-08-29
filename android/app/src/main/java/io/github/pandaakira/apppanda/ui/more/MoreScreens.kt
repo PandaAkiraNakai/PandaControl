@@ -1229,13 +1229,20 @@ private fun AppTile(
 ) {
     // Extraer el primer code point completo (emojis son surrogate pairs en UTF-16
     // y .first() devuelve solo el high surrogate, rompiendo el render).
-    val firstCp = a.label.codePointAt(0)
-    val firstCpStr = String(Character.toChars(firstCp))
-    val isEmoji = firstCp >= 0x2300 || firstCp == 0x25B6
-    val (icon, rest) = if (isEmoji) {
-        firstCpStr to a.label.substring(firstCpStr.length).trim()
+    // label puede venir vacío si el config.toml tiene un label="" mal
+    // tipeado — codePointAt(0) sobre "" tira StringIndexOutOfBoundsException
+    // y tumbaba toda la pantalla.
+    val (icon, rest) = if (a.label.isEmpty()) {
+        "▶" to a.name
     } else {
-        "▶" to a.label
+        val firstCp = a.label.codePointAt(0)
+        val firstCpStr = String(Character.toChars(firstCp))
+        val isEmoji = firstCp >= 0x2300 || firstCp == 0x25B6
+        if (isEmoji) {
+            firstCpStr to a.label.substring(firstCpStr.length).trim()
+        } else {
+            "▶" to a.label
+        }
     }
     Column(
         modifier = Modifier
