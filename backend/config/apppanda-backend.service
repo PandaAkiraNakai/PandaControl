@@ -19,26 +19,27 @@ StateDirectoryMode=0700
 LogsDirectoryMode=0750
 
 # Hardening
-# ProtectHome=no y RestrictNamespaces=no para que el subproceso `claude`
-# spawneado por claude_runner pueda escribir en ~/.claude/ (session-env,
-# cache, projects) y crear su propio mount namespace para su sandbox
-# interno. Antes estaba ProtectHome=read-only y los hijos heredaban el
-# bind-mount RO de /home, devolviendo EROFS al intentar inicializar.
-# PrivateTmp también se afloja porque claude usa /tmp para artefactos
-# intermedios que a veces tiene que compartir con apps GUI lanzadas.
-# /tmp va explícito en ReadWritePaths: con ProtectSystem=strict TODO el
-# árbol se monta read-only salvo lo listado acá, y PrivateTmp=no por sí
-# solo NO lo hace escribible. Sin esto, claude falla con EROFS al crear
-# su tmpdir /tmp/claude-<uid>/...
+# ProtectHome=no porque el módulo Files sirve/escribe [files].shared_dirs
+# (típicamente bajo ~), el módulo Temas lee [themes].dir (por default
+# ~/.config/apppanda-backend/temas) y el visor de memorias/pedidos abre
+# la SQLite de `mem` en ~/.local/share/mem/memory.db — todas rutas bajo el
+# home del usuario, configurables, que un ProtectHome=read-only bloquearía
+# para escritura (uploads, mkdir, rename, delete). No hay forma de acotar
+# esto a subrutas fijas en ReadWritePaths porque shared_dirs lo define el
+# usuario en config.toml, no este unit.
+# El resto SÍ queda estricto: el daemon no toca /tmp en ningún lado del
+# código (sin tempfile, sin rutas /tmp/ hardcodeadas) ni crea namespaces
+# propios, así que PrivateTmp/RestrictNamespaces se dejan en su default
+# seguro en vez de aflojados.
 ProtectSystem=strict
 ProtectHome=no
 ReadOnlyPaths=/etc/apppanda-backend
-ReadWritePaths=/var/lib/apppanda-backend /var/log/apppanda-backend /tmp
-PrivateTmp=no
+ReadWritePaths=/var/lib/apppanda-backend /var/log/apppanda-backend
+PrivateTmp=yes
 NoNewPrivileges=yes
 LockPersonality=yes
 RestrictRealtime=yes
-RestrictNamespaces=no
+RestrictNamespaces=yes
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes
