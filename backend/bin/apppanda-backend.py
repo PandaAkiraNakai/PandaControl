@@ -1559,6 +1559,12 @@ def wol_send(target: str, cfg: dict) -> str:
 
 
 def steam_launch(appid: str, cfg: dict) -> str:
+    # Los appid de Steam son siempre numéricos. A diferencia de
+    # docker_action (que regex-valida el nombre), esto no se chequeaba: un
+    # valor no numérico se metía igual en la URI y producía un "steam://
+    # rungameid/<basura>" roto en vez de un error claro.
+    if not (appid or "").isdigit():
+        return "appid inválido"
     # `steam <uri>` le pasa el URI a la instancia ya corriendo. Si el
     # usuario tiene configurado gamescope a nivel de juego en Steam,
     # se aplica automaticamente. Pasar steam:// como primer arg a
