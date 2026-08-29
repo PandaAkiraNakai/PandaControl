@@ -153,6 +153,7 @@ class _MouseMover:
     FREQ = 400.0          # Hz del hilo aplicador
     ALPHA = 0.5           # fracción del pendiente que se consume por tick (easing)
     MAX_STEP = 40         # tope de px por tick (por magnitud): suaviza flicks extremos
+    IDLE_TIMEOUT_S = 2.0  # sin pendiente durante esto, el hilo se apaga solo
 
     def __init__(self):
         self._tx = 0.0
@@ -172,9 +173,22 @@ class _MouseMover:
 
     def _loop(self) -> None:
         dt = 1.0 / self.FREQ
+        idle_ticks = 0
+        idle_limit = max(1, int(self.IDLE_TIMEOUT_S * self.FREQ))
         while True:
             with self._lock:
                 tx, ty = self._tx, self._ty
+                if tx or ty:
+                    idle_ticks = 0
+                else:
+                    idle_ticks += 1
+                    if idle_ticks >= idle_limit:
+                        # Nada pendiente hace IDLE_TIMEOUT_S: apagarse. El
+                        # chequeo y el apagado quedan atómicos bajo el mismo
+                        # lock que add() usa para relanzar, así no se pierde
+                        # un delta que llegue justo en este instante.
+                        self._started = False
+                        return
             if tx or ty:
                 sx = tx * self.ALPHA
                 sy = ty * self.ALPHA
