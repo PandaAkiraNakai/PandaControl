@@ -1662,13 +1662,22 @@ class _Handler(BaseHTTPRequestHandler):
         if not self._files_enabled():
             return {"result": "error", "error": "files disabled"}
         data = self._read_json_body()
+        base = self._resolve_dir(str(data.get("dir", "0")))
         parent = self._resolve_path(str(data.get("dir", "0")), data.get("rel", ""))
         name = self._safe_filename(str(data.get("name", "")))
-        if parent is None or name is None:
+        if base is None or parent is None or name is None:
             return {"result": "error", "error": "dir/rel/name inválidos"}
         path = parent / name
         if not path.exists():
             return {"result": "error", "error": "no existe"}
+        # Misma defensa que _files_download: confirmar que el archivo
+        # realmente cuelga del shared_dir (por si `name` es un symlink que
+        # apunta afuera) antes de abrirlo con la app por defecto del PC.
+        try:
+            real = path.resolve(strict=True)
+            real.relative_to(base)
+        except (ValueError, OSError):
+            return {"result": "error", "error": "fuera del shared_dir"}
         uid = os.getuid()
         env = {**os.environ, "XDG_RUNTIME_DIR": f"/run/user/{uid}", "LC_ALL": "C"}
         cmd = ["systemd-run", "--user", "--collect", "--quiet", "--",
