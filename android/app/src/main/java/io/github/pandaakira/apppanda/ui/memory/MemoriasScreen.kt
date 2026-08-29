@@ -71,15 +71,10 @@ fun MemoriasScreen(app: PandaApp) {
     var tipoFiltro by remember { mutableStateOf<String?>(null) }
     var verArchivadas by remember { mutableStateOf(false) }
 
-    LaunchedEffect(api, refresh, verArchivadas) {
-        val current = api ?: return@LaunchedEffect
-        try {
-            data = withContext(Dispatchers.IO) { current.memorias(verArchivadas) }
-            error = null
-        } catch (e: Exception) {
-            error = e.message ?: e::class.simpleName
-        }
-    }
+    io.github.pandaakira.apppanda.ui.components.PollingEffect(
+        api = api, key = refresh to verArchivadas, intervalMs = 30_000,
+        onResult = { data = it }, onError = { error = it },
+    ) { it.memorias(verArchivadas) }
 
     val todas = data?.memorias ?: emptyList()
     val filtradas = remember(todas, query, tipoFiltro) {

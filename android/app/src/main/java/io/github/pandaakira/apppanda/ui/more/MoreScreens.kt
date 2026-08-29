@@ -156,19 +156,10 @@ fun ProcessesScreen(app: PandaApp) {
     val scope = rememberCoroutineScope()
     val exec = io.github.pandaakira.apppanda.ui.components.rememberActionExecutor { api }
 
-    LaunchedEffect(api, sort, refresh) {
-        val current = api ?: return@LaunchedEffect
-        scope.launch {
-            try {
-                data = withContext(Dispatchers.IO) {
-                    current.processes(sort = sort, limit = 20)
-                }
-                error = null
-            } catch (e: Exception) {
-                error = e.message ?: e::class.simpleName
-            }
-        }
-    }
+    io.github.pandaakira.apppanda.ui.components.PollingEffect(
+        api = api, key = sort to refresh, intervalMs = 8_000,
+        onResult = { data = it }, onError = { error = it },
+    ) { it.processes(sort = sort, limit = 20) }
 
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
@@ -445,17 +436,10 @@ fun UpdatesScreen(app: PandaApp) {
     val scope = rememberCoroutineScope()
     val exec = io.github.pandaakira.apppanda.ui.components.rememberActionExecutor { api }
 
-    LaunchedEffect(api, refresh) {
-        val current = api ?: return@LaunchedEffect
-        scope.launch {
-            try {
-                data = withContext(Dispatchers.IO) { current.updates() }
-                error = null
-            } catch (e: Exception) {
-                error = e.message ?: e::class.simpleName
-            }
-        }
-    }
+    io.github.pandaakira.apppanda.ui.components.PollingEffect(
+        api = api, key = refresh, intervalMs = 60_000,
+        onResult = { data = it }, onError = { error = it },
+    ) { it.updates() }
 
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
@@ -536,24 +520,15 @@ fun DisplaysScreen(app: PandaApp) {
     val scope = rememberCoroutineScope()
     val exec = io.github.pandaakira.apppanda.ui.components.rememberActionExecutor { api }
 
-    LaunchedEffect(api, refresh) {
-        val current = api ?: return@LaunchedEffect
-        scope.launch {
-            try {
-                data = withContext(Dispatchers.IO) { current.screens() }
-                error = null
-            } catch (e: Exception) {
-                error = e.message ?: e::class.simpleName
-            }
-        }
-    }
+    io.github.pandaakira.apppanda.ui.components.PollingEffect(
+        api = api, key = refresh, intervalMs = 10_000,
+        onResult = { data = it }, onError = { error = it },
+    ) { it.screens() }
 
-    LaunchedEffect(api) {
-        val current = api ?: return@LaunchedEffect
-        scenes = withContext(Dispatchers.IO) {
-            runCatching { current.scenes().scenes }.getOrDefault(emptyList())
-        }
-    }
+    io.github.pandaakira.apppanda.ui.components.PollingEffect(
+        api = api, intervalMs = 30_000,
+        onResult = { scenes = it.scenes }, onError = {},
+    ) { it.scenes() }
 
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
@@ -670,32 +645,24 @@ fun MediaScreen(app: PandaApp) {
     val scope = rememberCoroutineScope()
     val exec = io.github.pandaakira.apppanda.ui.components.rememberActionExecutor { api }
 
-    LaunchedEffect(api, refresh) {
-        val current = api ?: return@LaunchedEffect
-        scope.launch {
-            try {
-                val list = withContext(Dispatchers.IO) { current.mediaPlayers().players }
-                val st = withContext(Dispatchers.IO) {
-                    list.associateWith { runCatching { current.mediaStatus(it) }.getOrNull()
-                        ?: MediaStatus() }
-                }
-                players = list
-                statuses = st
-                error = null
-            } catch (e: Exception) {
-                error = e.message ?: e::class.simpleName
-            }
+    io.github.pandaakira.apppanda.ui.components.PollingEffect(
+        api = api, key = refresh, intervalMs = 5_000,
+        onResult = { (list, st) -> players = list; statuses = st },
+        onError = { error = it },
+    ) { current ->
+        val list = current.mediaPlayers().players
+        val st = list.associateWith {
+            runCatching { current.mediaStatus(it) }.getOrNull() ?: MediaStatus()
         }
+        list to st
     }
 
     // Salida de audio: se carga aparte para que un fallo de pactl no tumbe el
     // reproductor (y viceversa). Comparte el mismo ActionExecutor.
-    LaunchedEffect(api, audioRefresh) {
-        val current = api ?: return@LaunchedEffect
-        scope.launch {
-            audio = withContext(Dispatchers.IO) { runCatching { current.audio() }.getOrNull() }
-        }
-    }
+    io.github.pandaakira.apppanda.ui.components.PollingEffect(
+        api = api, key = audioRefresh, intervalMs = 5_000,
+        onResult = { audio = it }, onError = {},
+    ) { runCatching { it.audio() }.getOrNull() }
 
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
@@ -1025,34 +992,23 @@ fun VpsScreen(app: PandaApp) {
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(api) {
-        val current = api ?: return@LaunchedEffect
-        scope.launch {
-            try {
-                hosts = withContext(Dispatchers.IO) {
-                    current.vpsList().hosts.map { it.alias }
-                }
-                error = null
-            } catch (e: Exception) {
-                error = e.message ?: e::class.simpleName
-            }
-        }
-    }
+    io.github.pandaakira.apppanda.ui.components.PollingEffect(
+        api = api, intervalMs = 30_000,
+        onResult = { hosts = it.hosts.map { h -> h.alias } }, onError = { error = it },
+    ) { it.vpsList() }
 
     LaunchedEffect(selected) {
         val current = api ?: return@LaunchedEffect
         val alias = selected ?: return@LaunchedEffect
         loadingSummary = true
         summary = null
-        scope.launch {
-            try {
-                val resp = withContext(Dispatchers.IO) { current.vpsSummary(alias) }
-                summary = resp.error?.let { "ERROR: $it" } ?: resp.output
-            } catch (e: Exception) {
-                summary = "ERROR: ${e.message ?: e::class.simpleName}"
-            } finally {
-                loadingSummary = false
-            }
+        try {
+            val resp = withContext(Dispatchers.IO) { current.vpsSummary(alias) }
+            summary = resp.error?.let { "ERROR: $it" } ?: resp.output
+        } catch (e: Exception) {
+            summary = "ERROR: ${e.message ?: e::class.simpleName}"
+        } finally {
+            loadingSummary = false
         }
     }
 
@@ -1118,26 +1074,16 @@ fun GamesScreen(app: PandaApp) {
     val scope = rememberCoroutineScope()
     val exec = io.github.pandaakira.apppanda.ui.components.rememberActionExecutor { api }
 
-    LaunchedEffect(api) {
-        val current = api ?: return@LaunchedEffect
-        scope.launch {
-            try {
-                val resp = withContext(Dispatchers.IO) { current.games() }
-                games = resp.games
-                useGamescope = resp.useGamescope
-                error = null
-            } catch (e: Exception) {
-                error = e.message ?: e::class.simpleName
-            }
-        }
-    }
+    io.github.pandaakira.apppanda.ui.components.PollingEffect(
+        api = api, intervalMs = 30_000,
+        onResult = { games = it.games; useGamescope = it.useGamescope },
+        onError = { error = it },
+    ) { it.games() }
 
-    LaunchedEffect(api, runningRefresh) {
-        val current = api ?: return@LaunchedEffect
-        running = withContext(Dispatchers.IO) {
-            runCatching { current.runningGame().running }.getOrNull()
-        }
-    }
+    io.github.pandaakira.apppanda.ui.components.PollingEffect(
+        api = api, key = runningRefresh, intervalMs = 5_000,
+        onResult = { running = it }, onError = {},
+    ) { runCatching { it.runningGame().running }.getOrNull() }
 
     if (confirmClose) {
         io.github.pandaakira.apppanda.ui.components.ConfirmDialog(
@@ -1241,17 +1187,10 @@ fun AppsScreen(app: PandaApp) {
     val scope = rememberCoroutineScope()
     val exec = io.github.pandaakira.apppanda.ui.components.rememberActionExecutor { api }
 
-    LaunchedEffect(api) {
-        val current = api ?: return@LaunchedEffect
-        scope.launch {
-            try {
-                apps = withContext(Dispatchers.IO) { current.apps().apps }
-                error = null
-            } catch (e: Exception) {
-                error = e.message ?: e::class.simpleName
-            }
-        }
-    }
+    io.github.pandaakira.apppanda.ui.components.PollingEffect(
+        api = api, intervalMs = 30_000,
+        onResult = { apps = it.apps }, onError = { error = it },
+    ) { it.apps() }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp)) {
         ScreenHeader(

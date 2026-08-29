@@ -75,19 +75,10 @@ fun ThemesScreen(app: PandaApp) {
     val scope = rememberCoroutineScope()
     val accent = LocalPandaColors.current.cyan
 
-    LaunchedEffect(api) {
-        val current = api ?: return@LaunchedEffect
-        scope.launch {
-            try {
-                val resp = withContext(Dispatchers.IO) { current.themes() }
-                themes = resp.themes
-                dir = resp.dir
-                error = null
-            } catch (e: Exception) {
-                error = e.message ?: e::class.simpleName
-            }
-        }
-    }
+    io.github.pandaakira.apppanda.ui.components.PollingEffect(
+        api = api, intervalMs = 30_000,
+        onResult = { themes = it.themes; dir = it.dir }, onError = { error = it },
+    ) { it.themes() }
 
     val selectedName = selected?.name.orEmpty()
     val builtInActive = selected?.isCustom != true

@@ -69,16 +69,12 @@ fun NiriCommandsCard(app: PandaApp) {
     // Monitor objetivo para los comandos de niri. null = monitor enfocado.
     var outputs by remember { mutableStateOf<List<NiriOutput>>(emptyList()) }
     var targetOutput by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(api) {
-        val current = api ?: return@LaunchedEffect
-        try {
-            // Todos los monitores conectados (no solo los encendidos): si una
-            // pantalla está en reposo igual debe poder elegirse como objetivo.
-            outputs = withContext(Dispatchers.IO) { current.screens() }.outputs
-        } catch (_: Exception) {
-            // Si no se pudieron leer las pantallas queda solo la opción "Foco".
-        }
-    }
+    // Todos los monitores conectados (no solo los encendidos): si una
+    // pantalla está en reposo igual debe poder elegirse como objetivo.
+    io.github.pandaakira.apppanda.ui.components.PollingEffect(
+        api = api, intervalMs = 30_000,
+        onResult = { outputs = it.outputs }, onError = {},
+    ) { it.screens() }
 
     val groups = listOf(
         NiriGroup("ventana", listOf(

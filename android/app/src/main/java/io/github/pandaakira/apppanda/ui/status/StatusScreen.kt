@@ -89,18 +89,10 @@ private fun SystemTab(app: PandaApp) {
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(api) {
-        api?.let {
-            scope.launch {
-                try {
-                    data = withContext(Dispatchers.IO) { it.systemStatus() }
-                    error = null
-                } catch (e: Exception) {
-                    error = e.message ?: e::class.simpleName
-                }
-            }
-        }
-    }
+    io.github.pandaakira.apppanda.ui.components.PollingEffect(
+        api = api, intervalMs = 8_000,
+        onResult = { data = it }, onError = { error = it },
+    ) { it.systemStatus() }
 
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
@@ -142,14 +134,10 @@ private fun DiskTab(app: PandaApp) {
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(api) {
-        api?.let {
-            scope.launch {
-                try { data = withContext(Dispatchers.IO) { it.disk() }; error = null }
-                catch (e: Exception) { error = e.message }
-            }
-        }
-    }
+    io.github.pandaakira.apppanda.ui.components.PollingEffect(
+        api = api, intervalMs = 15_000,
+        onResult = { data = it }, onError = { error = it },
+    ) { it.disk() }
 
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
@@ -177,14 +165,10 @@ private fun NetTab(app: PandaApp) {
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(api) {
-        api?.let {
-            scope.launch {
-                try { data = withContext(Dispatchers.IO) { it.net() }; error = null }
-                catch (e: Exception) { error = e.message }
-            }
-        }
-    }
+    io.github.pandaakira.apppanda.ui.components.PollingEffect(
+        api = api, intervalMs = 8_000,
+        onResult = { data = it }, onError = { error = it },
+    ) { it.net() }
 
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
@@ -225,14 +209,10 @@ private fun TempsTab(app: PandaApp) {
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(api) {
-        api?.let {
-            scope.launch {
-                try { data = withContext(Dispatchers.IO) { it.temps() }; error = null }
-                catch (e: Exception) { error = e.message }
-            }
-        }
-    }
+    io.github.pandaakira.apppanda.ui.components.PollingEffect(
+        api = api, intervalMs = 10_000,
+        onResult = { data = it }, onError = { error = it },
+    ) { it.temps() }
 
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
@@ -263,18 +243,10 @@ private fun GpuTab(app: PandaApp) {
     var refresh by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(api, refresh) {
-        api?.let {
-            scope.launch {
-                try {
-                    data = withContext(Dispatchers.IO) { it.gpu() }
-                    error = null
-                } catch (e: Exception) {
-                    error = e.message ?: e::class.simpleName
-                }
-            }
-        }
-    }
+    io.github.pandaakira.apppanda.ui.components.PollingEffect(
+        api = api, key = refresh, intervalMs = 10_000,
+        onResult = { data = it }, onError = { error = it },
+    ) { it.gpu() }
 
     LazyColumn(
         contentPadding = PaddingValues(16.dp),

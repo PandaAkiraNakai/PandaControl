@@ -122,26 +122,16 @@ fun FilesScreen(app: PandaApp) {
         }
     }
 
-    LaunchedEffect(api) {
-        val current = api ?: return@LaunchedEffect
-        try {
-            index = withContext(Dispatchers.IO) { current.filesIndex() }
-            indexError = null
-        } catch (e: Exception) {
-            indexError = e.message ?: e::class.simpleName
-        }
-    }
+    io.github.pandaakira.apppanda.ui.components.PollingEffect(
+        api = api, intervalMs = 30_000,
+        onResult = { index = it }, onError = { indexError = it },
+    ) { it.filesIndex() }
 
-    LaunchedEffect(api, dirIdx, rel, refresh, index?.dirs?.size) {
-        val current = api ?: return@LaunchedEffect
-        if (index == null || index!!.dirs.isEmpty()) return@LaunchedEffect
-        try {
-            listing = withContext(Dispatchers.IO) { current.filesList(dirIdx, rel) }
-            listError = listing?.error
-        } catch (e: Exception) {
-            listError = e.message ?: e::class.simpleName
-        }
-    }
+    io.github.pandaakira.apppanda.ui.components.PollingEffect(
+        api = if (index != null && index!!.dirs.isNotEmpty()) api else null,
+        key = Triple(dirIdx, rel, refresh), intervalMs = 15_000,
+        onResult = { listing = it; listError = it.error }, onError = { listError = it },
+    ) { it.filesList(dirIdx, rel) }
 
     fun descend(name: String) { rel = if (rel.isEmpty()) name else "$rel/$name" }
     fun goTo(target: String) { rel = target }

@@ -5,6 +5,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -14,8 +15,42 @@ import io.github.pandaakira.apppanda.data.PandaApi
 import io.github.pandaakira.apppanda.data.models.ActionResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+/**
+ * Fetchea [fetch] apenas hay [api] disponible y cada [intervalMs] mientras
+ * el composable siga en pantalla, reintentando solo ante un error
+ * transitorio (red, Doze) en vez de quedar pegado al primer fallo — que es
+ * el bug que tenían todas las pantallas antes de este helper: un solo
+ * intento en LaunchedEffect(api) que, si fallaba una vez, no se volvía a
+ * disparar hasta que la pantalla se recreaba (cambiar de tab y volver).
+ * [key] fuerza un refetch inmediato (cambiar de filtro, un botón
+ * "Refrescar", etc.) sin esperar al próximo tick.
+ */
+@Composable
+fun <T> PollingEffect(
+    api: PandaApi?,
+    key: Any? = Unit,
+    intervalMs: Long = 10_000,
+    onResult: (T) -> Unit,
+    onError: (String?) -> Unit,
+    fetch: suspend (PandaApi) -> T,
+) {
+    LaunchedEffect(api, key) {
+        val current = api ?: return@LaunchedEffect
+        while (true) {
+            try {
+                onResult(withContext(Dispatchers.IO) { fetch(current) })
+                onError(null)
+            } catch (e: Exception) {
+                onError(e.message ?: e::class.simpleName)
+            }
+            delay(intervalMs)
+        }
+    }
+}
 
 @Composable
 fun ConfirmDialog(

@@ -92,16 +92,13 @@ fun CalendarScreen(app: PandaApp) {
     val exec = rememberActionExecutor { api }
 
     // Trae el mes visible (con margen para los días de meses vecinos en grilla).
-    LaunchedEffect(api, month, refresh) {
-        val current = api ?: return@LaunchedEffect
+    io.github.pandaakira.apppanda.ui.components.PollingEffect(
+        api = api, key = month to refresh, intervalMs = 30_000,
+        onResult = { data = it }, onError = { error = it },
+    ) { current ->
         val from = ymd(month.atDay(1).minusDays(7))
         val to = ymd(month.atEndOfMonth().plusDays(7))
-        try {
-            data = withContext(Dispatchers.IO) { current.calendario(from, to) }
-            error = null
-        } catch (e: Exception) {
-            error = e.message ?: e::class.simpleName
-        }
+        current.calendario(from, to)
     }
 
     val eventos = data?.eventos ?: emptyList()

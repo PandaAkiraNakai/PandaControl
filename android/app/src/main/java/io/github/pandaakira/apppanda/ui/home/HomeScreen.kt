@@ -62,17 +62,10 @@ fun HomeScreen(app: PandaApp, onGoSetup: () -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(api) {
-        if (api == null) return@LaunchedEffect
-        scope.launch {
-            try {
-                status = withContext(Dispatchers.IO) { api!!.systemStatus() }
-                error = null
-            } catch (e: Exception) {
-                error = e.message?.take(140) ?: e::class.simpleName
-            }
-        }
-    }
+    io.github.pandaakira.apppanda.ui.components.PollingEffect(
+        api = api, intervalMs = 8_000,
+        onResult = { status = it }, onError = { error = it?.take(140) },
+    ) { it.systemStatus() }
 
     LaunchedEffect(api) {
         app.repository.events.collect { evt ->

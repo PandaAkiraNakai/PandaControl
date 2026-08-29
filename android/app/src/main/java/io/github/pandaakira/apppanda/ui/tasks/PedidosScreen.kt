@@ -65,15 +65,10 @@ fun PedidosScreen(app: PandaApp) {
     var error by remember { mutableStateOf<String?>(null) }
     var verHechos by remember { mutableStateOf(false) }
 
-    LaunchedEffect(api, verHechos) {
-        val current = api ?: return@LaunchedEffect
-        try {
-            data = withContext(Dispatchers.IO) { current.pedidos(verHechos) }
-            error = null
-        } catch (e: Exception) {
-            error = e.message ?: e::class.simpleName
-        }
-    }
+    io.github.pandaakira.apppanda.ui.components.PollingEffect(
+        api = api, key = verHechos, intervalMs = 20_000,
+        onResult = { data = it }, onError = { error = it },
+    ) { it.pedidos(verHechos) }
 
     val pedidos = data?.pedidos ?: emptyList()
 

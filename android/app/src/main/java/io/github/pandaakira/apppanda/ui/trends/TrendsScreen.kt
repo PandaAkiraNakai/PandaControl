@@ -54,18 +54,10 @@ fun TrendsScreen(app: PandaApp) {
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(api, range) {
-        api?.let {
-            scope.launch {
-                try {
-                    data = withContext(Dispatchers.IO) { it.metrics(range) }
-                    error = null
-                } catch (e: Exception) {
-                    error = e.message ?: e::class.simpleName
-                }
-            }
-        }
-    }
+    io.github.pandaakira.apppanda.ui.components.PollingEffect(
+        api = api, key = range, intervalMs = 15_000,
+        onResult = { data = it }, onError = { error = it },
+    ) { it.metrics(range) }
 
     if (api == null) {
         EmptyState("Configura el backend en Ajustes.")
