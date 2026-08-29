@@ -24,6 +24,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 import traceback
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -39,6 +40,12 @@ VERSION = "0.1.0"
 # para cualquier payload real de esta API; evita que un POST autenticado
 # declare un Content-Length de varios GB y lo cargue entero a RAM.
 MAX_JSON_BODY_BYTES = 2 * 1024 * 1024
+
+# Serializa solo el paso "elegir nombre final + rename" de los uploads
+# (ver _files_upload) — cierra la ventana TOCTOU de dos uploads
+# concurrentes con el mismo X-Filename sin bloquear la transferencia de
+# datos en sí, que sigue siendo paralela.
+_upload_finalize_lock = threading.Lock()
 
 
 class EventBroker:
@@ -1511,21 +1518,10 @@ class _Handler(BaseHTTPRequestHandler):
         if length <= 0 or length > max_bytes:
             return {"result": "error",
                     "error": f"size inválido (max {max_bytes // (1024*1024)} MB)"}
-        # Si ya existe, agregar sufijo (1), (2), ...
-        final_path = target_dir / name
-        if final_path.exists():
-            stem, dot, ext = name.rpartition(".")
-            if dot == "":
-                stem, ext = name, ""
-            for i in range(1, 1000):
-                candidate = target_dir / (
-                    f"{stem} ({i}){'.' + ext if ext else ''}"
-                )
-                if not candidate.exists():
-                    final_path = candidate
-                    break
-        # Escribir streaming. Atómico: tmp + rename.
-        tmp_path = final_path.with_suffix(final_path.suffix + ".part")
+        # Nombre temporal único por request (uuid): dos uploads concurrentes
+        # con el mismo X-Filename ya no comparten el mismo .part, así que
+        # nunca se pisan los bytes durante la transferencia.
+        tmp_path = target_dir / f".upload-{uuid.uuid4().hex}.part"
         remaining = length
         try:
             with tmp_path.open("wb") as fp:
@@ -1538,7 +1534,24 @@ class _Handler(BaseHTTPRequestHandler):
             if remaining > 0:
                 tmp_path.unlink(missing_ok=True)
                 return {"result": "error", "error": "stream incompleto"}
-            tmp_path.rename(final_path)
+            # El nombre final se decide y se aplica recién acá, con los
+            # bytes ya en disco y bajo lock: cierra la ventana TOCTOU entre
+            # "ver que no existe" y "renombrar" para dos uploads
+            # concurrentes con el mismo nombre (antes podían pisarse).
+            with _upload_finalize_lock:
+                final_path = target_dir / name
+                if final_path.exists():
+                    stem, dot, ext = name.rpartition(".")
+                    if dot == "":
+                        stem, ext = name, ""
+                    for i in range(1, 1000):
+                        candidate = target_dir / (
+                            f"{stem} ({i}){'.' + ext if ext else ''}"
+                        )
+                        if not candidate.exists():
+                            final_path = candidate
+                            break
+                tmp_path.rename(final_path)
         except OSError as e:
             tmp_path.unlink(missing_ok=True)
             return {"result": "error", "error": f"escribir: {e}"}
