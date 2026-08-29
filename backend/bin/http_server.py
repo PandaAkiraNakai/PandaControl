@@ -758,6 +758,19 @@ class _Handler(BaseHTTPRequestHandler):
                     prompt=data.get("prompt", ""),
                     command=data.get("command", ""),
                 )
+                if api.ctx.broker.subscriber_count() == 0:
+                    # Nadie escuchando el SSE ahora mismo (celular con la
+                    # conexión caída, p. ej. por Doze) — el evento se
+                    # publica igual, pero sin este log no queda rastro de
+                    # que salió "al aire" y solo puede rescatarlo el replay
+                    # de pendientes si el celular reconecta antes del
+                    # timeout de aprobación.
+                    print(
+                        f"[http] WARNING: sudo_request {rid} publicado sin "
+                        f"suscriptores SSE — depende del replay si el "
+                        f"celular reconecta a tiempo",
+                        file=sys.stderr,
+                    )
                 api.ctx.broker.publish("sudo_request", {
                     "rid": rid,
                     "prompt": data.get("prompt", "")[:200],
