@@ -416,9 +416,18 @@ POST /api/v1/sudo/{rid}/decision   {approve: bool}    (huella en la app)
   `polkit` de alcance reducido.
 - **Audit log append-only** (`chattr +a`, formato JSONL): toda acción queda
   registrada y el log no se puede reescribir.
+- **Bodies HTTP acotados:** los endpoints JSON rechazan (`413`) un payload
+  desproporcionado antes de leer un solo byte, así que un POST no puede
+  agotar la memoria del daemon declarando un `Content-Length` enorme. La
+  subida de archivos usa su propio límite configurable (`max_upload_mb`) y
+  postea directo a disco en streaming, sin cargar el archivo a RAM ni del
+  lado del celular ni del backend.
 - **Aprobación de sudo con biometría:** elevar privilegios desde el celular
   exige confirmar tu huella (o el PIN/patrón del dispositivo) en el modal, que
   además muestra el comando exacto que se va a ejecutar.
+- **Bearer tokens cifrados en el dispositivo:** la app los guarda con una
+  clave AES-256-GCM que vive en el Android Keystore, no en texto plano — ni
+  un dispositivo rooteado o un backup mal hecho puede leerlos directamente.
 - **El bind por defecto es `127.0.0.1`**: hay que abrirlo explícitamente a la
   IP de Tailscale para usarlo desde el celular.
 
