@@ -25,7 +25,7 @@ públicos.
 | `GET /api/v1/metrics?range=1h\|6h\|24h` | histórico SQLite |
 | `GET /api/v1/audio/sinks` | pactl, sinks + default + `master` (volumen % / mute) |
 | `GET /api/v1/clipboard` | texto del portapapeles (wl-paste) |
-| `GET /api/v1/screens` | niri outputs |
+| `GET /api/v1/screens` | outputs del compositor activo (niri / KDE / COSMIC) |
 | `GET /api/v1/media/players` + `/{player}/status` | playerctl/MPRIS |
 | `GET /api/v1/net/neighbors` | ip neigh + gateway |
 | `GET /api/v1/vps` + `/{alias}/summary` | SSH BatchMode |
@@ -35,6 +35,29 @@ públicos.
 | `GET /api/v1/themes` | temas visuales (`*.json` de `[themes].dir`) |
 | `GET /api/v1/themes/image?name=...` | imagen de fondo de un tema (archivo de la carpeta) |
 | `GET /api/v1/events` | SSE: `hello`, `metric_tick`, `service_failed`, `session_new`, `boot`, `resume`, `sudo_request` |
+
+## Pantallas (multi-compositor)
+
+`screen_outputs` / `screen_set_output` / `screen_dpms` despachan según el
+compositor detectado en cada llamada (`active_compositor()`), así el mismo
+backend sirve sin reconfigurar nada aunque cambies de sesión:
+
+| Compositor | Listar / on-off | DPMS |
+|---|---|---|
+| niri | `niri msg output` | `niri msg action power-{on,off}-monitors` |
+| KDE Plasma | `kscreen-doctor` | `kscreen-doctor --dpms` |
+| COSMIC | `cosmic-randr` | `wlopm` (`zwlr_output_power_manager_v1`) |
+
+En COSMIC hacen falta dos binarios porque `cosmic-randr` no expone DPMS:
+`disable` saca el output del layout y reacomoda las ventanas, mientras que
+`wlopm` corta la alimentación dejando la distribución intacta. El DPMS solo
+recorre los outputs habilitados — pedirle power-on a uno deshabilitado no lo
+devuelve al layout.
+
+Gotcha común a KDE y COSMIC: sus clientes hablan Wayland/D-Bus y el backend
+corre como servicio systemd, que **no** hereda `WAYLAND_DISPLAY` ni
+`DBUS_SESSION_BUS_ADDRESS` de la sesión gráfica. `_kde_session_env()` y
+`_cosmic_session_env()` las arman a mano desde `/run/user/<uid>`.
 
 ## Módulo Control (mouse + teclado)
 

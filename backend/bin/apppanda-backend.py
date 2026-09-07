@@ -804,13 +804,16 @@ def _process_running(comm: str) -> bool:
 
 
 def active_compositor() -> str:
-    """'niri', 'kde' o 'unknown'. Se resuelve en cada llamada (no se cachea)
-    porque el usuario alterna de sesión (niri <-> Plasma) sin reiniciar el
-    backend, y este puede quedar corriendo de una sesión a otra."""
+    """'niri', 'kde', 'cosmic' o 'unknown'. Se resuelve en cada llamada (no se
+    cachea) porque el usuario alterna de sesión (niri <-> Plasma <-> COSMIC)
+    sin reiniciar el backend, y este puede quedar corriendo de una sesión a
+    otra."""
     if "NIRI_SOCKET" in niri_socket_env():
         return "niri"
     if _process_running("kwin_wayland") or _process_running("kwin_x11"):
         return "kde"
+    if _process_running("cosmic-comp"):
+        return "cosmic"
     return "unknown"
 
 
@@ -1429,10 +1432,119 @@ def _kde_dpms(on: bool) -> str:
     return (stderr or stdout or f"exit {rc}")[:300]
 
 
-# ─── Pantallas (dispatch niri / KDE) ─────────────────────────────────────────
+# ─── COSMIC (cosmic-randr + wlopm) ───────────────────────────────────────────
+# cosmic-comp no tiene IPC propio como niri ni D-Bus como KWin: se maneja con
+# los clientes Wayland que trae el escritorio.
+#   - listar / prender / apagar outputs -> cosmic-randr
+#   - DPMS real (power off del panel)   -> wlopm, vía zwlr_output_power_manager_v1
+# cosmic-randr NO expone dpms: `disable` saca el output del layout (las
+# ventanas se reacomodan), mientras que wlopm apaga la alimentación dejando la
+# distribución intacta. Por eso cada una cubre una operación distinta.
+
+def _cosmic_session_env() -> dict:
+    """cosmic-randr y wlopm son clientes Wayland: necesitan WAYLAND_DISPLAY y
+    XDG_RUNTIME_DIR. El backend corre como servicio systemd y no los hereda de
+    la sesión gráfica — mismo problema que kscreen-doctor en KDE."""
+    uid = os.getuid()
+    runtime_dir = f"/run/user/{uid}"
+    env = {**os.environ, "LC_ALL": "C", "XDG_RUNTIME_DIR": runtime_dir}
+    displays = sorted(
+        (p for p in Path(runtime_dir).glob("wayland-*") if not p.name.endswith(".lock")),
+        key=lambda p: p.stat().st_mtime, reverse=True,
+    )
+    if displays:
+        env["WAYLAND_DISPLAY"] = displays[0].name
+    return env
+
+
+def _cosmic_run(args: list[str], timeout: int = 5) -> tuple[int, str, str]:
+    return _wayland_client_run("cosmic-randr", args, timeout)
+
+
+def _wlopm_run(args: list[str], timeout: int = 5) -> tuple[int, str, str]:
+    return _wayland_client_run("wlopm", args, timeout)
+
+
+def _wayland_client_run(binary: str, args: list[str], timeout: int) -> tuple[int, str, str]:
+    try:
+        proc = subprocess.run(
+            [binary, *args],
+            capture_output=True, text=True, timeout=timeout, env=_cosmic_session_env(),
+        )
+    except subprocess.TimeoutExpired:
+        return -1, "", f"timeout consultando {binary}"
+    except FileNotFoundError:
+        return -1, "", f"{binary} no encontrado"
+    return proc.returncode, proc.stdout or "", (proc.stderr or "").strip()
+
+
+# `cosmic-randr list` sin --kdl viene con colores ANSI incrustados y es un
+# infierno de parsear; el KDL sale limpio y estable.
+_COSMIC_OUTPUT_RE = re.compile(r'^output\s+"([^"]+)"\s+enabled=#(true|false)')
+_COSMIC_DESC_RE = re.compile(r'make="([^"]*)"\s+model="([^"]*)"')
+
+
+def _cosmic_outputs() -> tuple[list[dict], str | None]:
+    rc, stdout, stderr = _cosmic_run(["list", "--kdl"])
+    if rc != 0:
+        return [], (stderr or stdout or f"exit {rc}")[:300]
+    out = []
+    name = None
+    on = False
+    label = None
+    for line in stdout.splitlines():
+        m = _COSMIC_OUTPUT_RE.match(line.strip())
+        if m:
+            if name:
+                out.append({"name": name, "label": label or name, "on": on})
+            name, on, label = m.group(1), m.group(2) == "true", None
+            continue
+        if name and label is None:
+            d = _COSMIC_DESC_RE.search(line)
+            if d:
+                make, model = d.group(1).strip(), d.group(2).strip()
+                label = " ".join(p for p in (make, model) if p) or None
+    if name:
+        out.append({"name": name, "label": label or name, "on": on})
+    out.sort(key=lambda o: o["name"])
+    return out, None
+
+
+def _cosmic_set_output(name: str, on: bool) -> str:
+    rc, stdout, stderr = _cosmic_run(["enable" if on else "disable", name])
+    if rc == 0:
+        return "ok"
+    return (stderr or stdout or f"exit {rc}")[:300]
+
+
+def _cosmic_dpms(on: bool) -> str:
+    """wlopm no acepta comodín en todas las builds, así que se recorre output
+    por output. Solo se tocan los habilitados: pedirle power-on a un output
+    deshabilitado no lo trae de vuelta al layout y devuelve error."""
+    outputs, err = _cosmic_outputs()
+    if err:
+        return err
+    targets = [o["name"] for o in outputs if o["on"]]
+    if not targets:
+        return "no hay outputs habilitados"
+    flag = "--on" if on else "--off"
+    errors = []
+    for target in targets:
+        rc, stdout, stderr = _wlopm_run([flag, target])
+        if rc != 0:
+            errors.append(f"{target}: {(stderr or stdout or f'exit {rc}').strip()}")
+    if errors:
+        return "; ".join(errors)[:300]
+    return "ok"
+
+
+# ─── Pantallas (dispatch niri / KDE / COSMIC) ────────────────────────────────
 # Punto único que usa el resto del backend para listar/prender/apagar
 # monitores. Elige backend según el compositor activo en este momento, así
-# la misma app funciona tanto en niri como en Plasma sin reconfigurar nada.
+# la misma app funciona en niri, Plasma o COSMIC sin reconfigurar nada.
+
+_NO_COMPOSITOR = "no se detectó niri, KDE Plasma ni COSMIC corriendo"
+
 
 def screen_outputs() -> tuple[list[dict], str | None]:
     comp = active_compositor()
@@ -1440,7 +1552,9 @@ def screen_outputs() -> tuple[list[dict], str | None]:
         return _kde_outputs()
     if comp == "niri":
         return _niri_outputs()
-    return [], "no se detectó niri ni KDE Plasma corriendo"
+    if comp == "cosmic":
+        return _cosmic_outputs()
+    return [], _NO_COMPOSITOR
 
 
 def screen_set_output(name: str, on: bool) -> str:
@@ -1449,7 +1563,9 @@ def screen_set_output(name: str, on: bool) -> str:
         return _kde_set_output(name, on)
     if comp == "niri":
         return _niri_set_output(name, on)
-    return "no se detectó niri ni KDE Plasma corriendo"
+    if comp == "cosmic":
+        return _cosmic_set_output(name, on)
+    return _NO_COMPOSITOR
 
 
 def screen_dpms(on: bool) -> str:
@@ -1458,7 +1574,9 @@ def screen_dpms(on: bool) -> str:
         return _kde_dpms(on)
     if comp == "niri":
         return _niri_dpms(on)
-    return "no se detectó niri ni KDE Plasma corriendo"
+    if comp == "cosmic":
+        return _cosmic_dpms(on)
+    return _NO_COMPOSITOR
 
 
 # Mapa de comandos expuestos al cliente Android (sección Comandos del tab

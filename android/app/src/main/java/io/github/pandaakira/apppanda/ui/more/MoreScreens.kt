@@ -538,6 +538,7 @@ fun DisplaysScreen(app: PandaApp) {
         val compositorLabel = when (data?.compositor) {
             "kde" -> "plasma"
             "niri" -> "niri"
+            "cosmic" -> "cosmic"
             else -> "?"
         }
         item { ScreenHeader("DISPLAYS :: $compositorLabel", "tap output = toggle on/off") }
