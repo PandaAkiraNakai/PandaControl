@@ -2,16 +2,18 @@ package io.github.pandaakira.apppanda.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Paleta cyberpunk/netrunner
-val PandaBackground = Color(0xFF0D0D11)
-val PandaSurface = Color(0xFF15151C)
-val PandaSurfaceHigh = Color(0xFF1E1E26)
-val PandaOnSurface = Color(0xFFE0E0E6)
-val PandaOnSurfaceMuted = Color(0xFF8A8A99)
+// Paleta Pokédex Gen I (el aparato rojo del anime): pantalla LCD verde sobre
+// carcasa roja, con los botones amarillo/azul del frente como acentos.
+// Las superficies llevan alfa para que el fondo animado se vea a través.
+val PandaBackground = Color(0xFF080D09)
+val PandaSurface = Color(0xE6112017)
+val PandaSurfaceHigh = Color(0xE61B3324)
+val PandaOnSurface = Color(0xFFDFF7D6)
+val PandaOnSurfaceMuted = Color(0xFF7BA886)
 
-val PandaYellow = Color(0xFFFFEA00)
-val PandaMagenta = Color(0xFFFF007A)
-val PandaCyan = Color(0xFF00E5FF)
-val PandaGreen = Color(0xFF00FF7F)
-val PandaRed = Color(0xFFFF3860)
-val PandaOrange = Color(0xFFFFA500)
+val PandaYellow = Color(0xFFFFD23F)
+val PandaMagenta = Color(0xFFFF5470)
+val PandaCyan = Color(0xFF33B5E5)
+val PandaGreen = Color(0xFF7CF03D)
+val PandaRed = Color(0xFFEE1C25)
+val PandaOrange = Color(0xFFFF8A2B)

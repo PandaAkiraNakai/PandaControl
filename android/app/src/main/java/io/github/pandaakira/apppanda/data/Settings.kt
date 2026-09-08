@@ -44,7 +44,7 @@ data class BackendConfig(
 }
 
 /** Tema visual seleccionado. [specJson] es un `ThemeDef` serializado (colores
- *  + fuente + iconos + formas); vacío = usar el tema incluido (cyberpunk). Se
+ *  + fuente + iconos + formas); vacío = usar el tema incluido (Pokédex). Se
  *  guarda completo para aplicarlo al instante al arrancar, sin backend. */
 data class SelectedTheme(
     val name: String = "",
@@ -192,7 +192,7 @@ class Settings(private val context: Context) {
         }
     }
 
-    /** Vuelve al tema incluido (cyberpunk). */
+    /** Vuelve al tema incluido (Pokédex Gen I). */
     suspend fun clearTheme() {
         context.dataStore.edit { prefs ->
             prefs.remove(Keys.THEME_NAME)

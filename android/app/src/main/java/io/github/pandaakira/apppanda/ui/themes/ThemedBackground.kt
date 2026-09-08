@@ -54,6 +54,32 @@ fun ThemedBackground(
 
     Box(Modifier.fillMaxSize().background(theme.palette.background)) {
         when {
+            // Pantalla de la Pokédex: matriz de puntos + línea de escaneo +
+            // luces del aparato. Si el tema además trae imagen, va detrás con
+            // su velo y la pantalla se dibuja encima; los alfas del efecto son
+            // bajos, así que por sí solo no necesita velo.
+            theme.backgroundEffect == "pokedex" -> {
+                image?.let { img ->
+                    Image(
+                        bitmap = img,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(theme.palette.background.copy(alpha = 0.55f)),
+                    )
+                }
+                PokedexScan(
+                    screen = theme.palette.green,
+                    lamp = theme.palette.cyan,
+                    red = theme.palette.red,
+                    yellow = theme.palette.yellow,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
             // Efecto animado del tema (la lluvia de código del Matrix). Se dibuja
             // por encima del color de fondo y debajo del contenido, con un velo
             // tenue para que el texto siga legible.

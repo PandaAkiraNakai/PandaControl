@@ -1,0 +1,23 @@
+{
+  "name": "Pokédex Gen I",
+  "dark": true,
+  "font": "mono",
+  "iconStyle": "rounded",
+  "corner": 18,
+  "border": 2,
+  "chrome": "▸ ",
+  "backgroundEffect": "pokedex",
+  "colors": {
+    "background": "#080D09",
+    "surface": "#E6112017",
+    "surfaceHigh": "#E61B3324",
+    "onSurface": "#DFF7D6",
+    "onSurfaceMuted": "#7BA886",
+    "yellow": "#FFD23F",
+    "magenta": "#FF5470",
+    "cyan": "#33B5E5",
+    "green": "#7CF03D",
+    "red": "#EE1C25",
+    "orange": "#FF8A2B"
+  }
+}

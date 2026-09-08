@@ -49,11 +49,13 @@ data class PandaTheme(
     val iconStyle: IconStyle,
     val shapes: PandaShapes,
     val backgroundImage: String = "",
-    /** Efecto de fondo animado que dibuja la app (p. ej. "matrixRain"). "" = ninguno. */
+    /** Efecto de fondo animado que dibuja la app (p. ej. "pokedex"). "" = ninguno. */
     val backgroundEffect: String = "",
+    /** Prefijo decorativo de titulares ya resuelto ("" = sin chrome). */
+    val chrome: String = BuiltInChrome,
 )
 
-/** Paleta cyberpunk incluida — el tema por defecto y el fallback. */
+/** Paleta Pokédex incluida — el tema por defecto y el fallback. */
 val BuiltInPalette = PandaPalette(
     background = PandaBackground,
     surface = PandaSurface,
@@ -75,14 +77,23 @@ fun pandaShapes(cornerDp: Int, borderDp: Int): PandaShapes = PandaShapes(
     border = borderDp.coerceIn(0, 8).dp,
 )
 
-val BuiltInShapes = pandaShapes(12, 1)
+val BuiltInShapes = pandaShapes(18, 2)
 
-/** Tema incluido (Cyberpunk): mono+sans, iconos outlined, esquinas 12, borde 1. */
+/** Prefijo de titulares del tema incluido: el cursor de entrada de la Pokédex. */
+const val BuiltInChrome = "▸ "
+
+/**
+ * Tema incluido (Pokédex Gen I): todo monoespaciado como una pantalla LCD,
+ * iconos redondeados como los botones del aparato, esquinas 18 y borde 2 (la
+ * carcasa), y el fondo animado de la pantalla de la Pokédex.
+ */
 val BuiltInTheme = PandaTheme(
     palette = BuiltInPalette,
-    font = PandaFont.Default,
-    iconStyle = IconStyle.Outlined,
+    font = PandaFont.Mono,
+    iconStyle = IconStyle.Rounded,
     shapes = BuiltInShapes,
+    backgroundEffect = "pokedex",
+    chrome = BuiltInChrome,
 )
 
 /**
@@ -95,18 +106,28 @@ val LocalPandaColors = staticCompositionLocalOf { BuiltInPalette }
 val LocalPandaShapes = staticCompositionLocalOf { BuiltInShapes }
 
 /**
- * "Chrome de terminal" del tema: el prefijo `// ` que las tarjetas y titulares
- * anteponen, parte de la identidad cyberpunk/terminal. Se activa solo en los
- * temas de fuente mono/mixta (Cyberpunk, Matrix, Synthwave) y se apaga en los
- * sans/serif (Nord, Soft), que quedan con titulares limpios acordes a su
- * estética. Los datos monoespaciados (tablas, IPs, logs) no son chrome y no se
- * tocan.
+ * "Chrome" del tema: el prefijo que las tarjetas y titulares anteponen (en el
+ * tema incluido, el cursor `▸ ` de las entradas de la Pokédex). Cada tema lo
+ * elige con su campo `chrome`: `auto` lo deriva de la fuente (mono/mixta lo
+ * llevan, sans/serif quedan con titulares limpios), `none` lo apaga y
+ * cualquier otro string se usa tal cual. Los datos monoespaciados (tablas,
+ * IPs, logs) no son chrome y no se tocan.
  */
-val LocalPandaChrome = staticCompositionLocalOf { true }
+val LocalPandaChrome = staticCompositionLocalOf { BuiltInChrome }
 
-/** Deriva si un tema lleva chrome de terminal a partir de su fuente. */
+/** Prefijo por defecto de los temas mono/mixtos que no piden uno propio. */
+private const val TerminalChrome = "// "
+
+/** Deriva si un tema lleva chrome cuando no declara uno propio. */
 fun PandaFont.usesTerminalChrome(): Boolean =
     this == PandaFont.Default || this == PandaFont.Mono
+
+/** Resuelve el campo `chrome` del tema al prefijo final de los titulares. */
+fun resolveChrome(chrome: String, font: PandaFont): String = when (chrome.trim()) {
+    "auto" -> if (font.usesTerminalChrome()) TerminalChrome else ""
+    "none", "" -> ""
+    else -> chrome
+}
 
 private fun PandaPalette.toColorScheme(): ColorScheme = darkColorScheme(
     primary = yellow,
@@ -161,14 +182,18 @@ fun ThemeColors.toPalette(): PandaPalette = PandaPalette(
 )
 
 /** Convierte un tema del backend (strings) al tema resuelto de Compose. */
-fun ThemeDef.toPandaTheme(): PandaTheme = PandaTheme(
-    palette = colors.toPalette(),
-    font = pandaFontFromName(font),
-    iconStyle = iconStyleFromName(iconStyle),
-    shapes = pandaShapes(corner, border),
-    backgroundImage = backgroundImage,
-    backgroundEffect = backgroundEffect,
-)
+fun ThemeDef.toPandaTheme(): PandaTheme {
+    val resolvedFont = pandaFontFromName(font)
+    return PandaTheme(
+        palette = colors.toPalette(),
+        font = resolvedFont,
+        iconStyle = iconStyleFromName(iconStyle),
+        shapes = pandaShapes(corner, border),
+        backgroundImage = backgroundImage,
+        backgroundEffect = backgroundEffect,
+        chrome = resolveChrome(chrome, resolvedFont),
+    )
+}
 
 @Composable
 fun PandaControlTheme(
@@ -179,7 +204,7 @@ fun PandaControlTheme(
         LocalPandaColors provides theme.palette,
         LocalPandaShapes provides theme.shapes,
         LocalIconStyle provides theme.iconStyle,
-        LocalPandaChrome provides theme.font.usesTerminalChrome(),
+        LocalPandaChrome provides theme.chrome,
     ) {
         MaterialTheme(
             colorScheme = theme.palette.toColorScheme(),

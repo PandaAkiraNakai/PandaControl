@@ -7,7 +7,7 @@ celular.
 ## Stack
 
 - Kotlin 2.0.21 + Compose Compiler oficial
-- Material 3 (tema cyberpunk: `#0d0d11`, `#ffea00`, `#ff007a`, `#00e5ff`)
+- Material 3 (tema Pokédex Gen I: `#080d09`, `#7cf03d`, `#ee1c25`, `#ffd23f`)
 - Navigation Compose
 - Ktor 3.0.2 (HTTP + SSE manual sobre `bodyAsChannel`)
 - DataStore Preferences (persiste host + token)

@@ -1242,7 +1242,9 @@ class _Handler(BaseHTTPRequestHandler):
     _FONTS = ("default", "sans", "serif", "mono")
     _ICON_STYLES = ("outlined", "filled", "rounded", "sharp")
     # Efectos de fondo animados que la app sabe dibujar (sin imagen). "" = ninguno.
-    _BG_EFFECTS = ("", "matrixRain", "equalizer")
+    _BG_EFFECTS = ("", "matrixRain", "equalizer", "pokedex")
+    # Largo maximo del prefijo decorativo de titulares (campo "chrome").
+    _CHROME_MAX = 4
 
     @staticmethod
     def _clamp_int(v, default: int, lo: int, hi: int) -> int:
@@ -1280,6 +1282,12 @@ class _Handler(BaseHTTPRequestHandler):
         bg_effect = raw.get("backgroundEffect", "")
         if bg_effect not in self._BG_EFFECTS:
             bg_effect = ""
+        # Prefijo decorativo de titulares. "auto" = lo decide la app segun la
+        # fuente; "none" = sin prefijo; cualquier otro string corto se usa tal
+        # cual (p. ej. "// " o "> "). Valor invalido -> "auto".
+        chrome = raw.get("chrome", "auto")
+        if not isinstance(chrome, str) or len(chrome) > self._CHROME_MAX:
+            chrome = "auto"
         # Imágenes de fondo opcionales: nombres de archivos en la carpeta de
         # temas. Acepta "backgroundImage" (uno) y/o "backgroundImages" (lista,
         # para elegir entre varios). Solo se reportan los que existan y tengan
@@ -1308,6 +1316,7 @@ class _Handler(BaseHTTPRequestHandler):
             "backgroundImage": images[0] if images else "",
             "backgroundImages": images,
             "backgroundEffect": bg_effect,
+            "chrome": chrome,
             "colors": colors,
         }
 

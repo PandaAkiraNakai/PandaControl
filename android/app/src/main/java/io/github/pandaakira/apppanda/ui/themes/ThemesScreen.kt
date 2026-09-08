@@ -59,10 +59,10 @@ private val themeJson = Json { ignoreUnknownKeys = true }
 /** Colores que representan al tema incluido, como ThemeColors, para el preview
  *  y para que "Incluido" se muestre con su swatch igual que los demás. */
 private val builtInColors = ThemeColors(
-    background = "#0D0D11", surface = "#15151C", surfaceHigh = "#1E1E26",
-    onSurface = "#E0E0E6", onSurfaceMuted = "#8A8A99",
-    yellow = "#FFEA00", magenta = "#FF007A", cyan = "#00E5FF",
-    green = "#00FF7F", red = "#FF3860", orange = "#FFA500",
+    background = "#080D09", surface = "#E6112017", surfaceHigh = "#E61B3324",
+    onSurface = "#DFF7D6", onSurfaceMuted = "#7BA886",
+    yellow = "#FFD23F", magenta = "#FF5470", cyan = "#33B5E5",
+    green = "#7CF03D", red = "#EE1C25", orange = "#FF8A2B",
 )
 
 @Composable
@@ -98,16 +98,16 @@ fun ThemesScreen(app: PandaApp) {
         }
     }
 
-    // El tema incluido (Cyberpunk) — siempre disponible, incluso sin backend.
-    // Se reusa en la sección "Cyberpunk" y en los estados sin datos.
+    // El tema incluido (Pokédex) — siempre disponible, incluso sin backend.
+    // Se reusa en la sección "Pokedex" y en los estados sin datos.
     val builtIn: @Composable () -> Unit = {
         ThemeCard(
             app = app,
-            name = "Cyberpunk (incluido)",
+            name = "Pokédex Gen I (incluido)",
             colors = builtInColors,
-            meta = "default · outlined · r12 · b1",
-            cornerDp = 12,
-            borderDp = 1,
+            meta = "mono · rounded · r18 · b2",
+            cornerDp = 18,
+            borderDp = 2,
             wallpapers = emptyList(),
             activeWallpaper = "",
             selected = builtInActive,
@@ -132,7 +132,7 @@ fun ThemesScreen(app: PandaApp) {
         val loaded = themes
         if (loaded.isNullOrEmpty() || api == null || error != null) {
             // Sin datos utilizables del backend: muestra solo el incluido.
-            item(key = "hdr-Cyberpunk") { CategoryLabel("Cyberpunk") }
+            item(key = "hdr-Pokedex") { CategoryLabel("Pokedex") }
             item(key = "builtin") { builtIn() }
             when {
                 api == null -> item {
@@ -149,11 +149,11 @@ fun ThemesScreen(app: PandaApp) {
             }
         } else {
             // Agrupa por categoría (subcarpeta). El tema incluido va dentro de
-            // "Cyberpunk", que siempre se muestra aunque no haya temas ahí.
+            // "Pokedex", que siempre se muestra aunque no haya temas ahí.
             val grouped = loaded.groupBy { it.category.ifBlank { OTHER_CATEGORY } }
-            orderCategories(grouped.keys + "Cyberpunk").forEach { cat ->
+            orderCategories(grouped.keys + "Pokedex").forEach { cat ->
                 item(key = "hdr-$cat") { CategoryLabel(cat) }
-                if (cat == "Cyberpunk") item(key = "builtin") { builtIn() }
+                if (cat == "Pokedex") item(key = "builtin") { builtIn() }
                 items(grouped[cat] ?: emptyList(), key = { it.id }) { theme ->
                     val isSel = !builtInActive && theme.name == selectedName
                     ThemeCard(
@@ -182,7 +182,7 @@ fun ThemesScreen(app: PandaApp) {
 private const val OTHER_CATEGORY = "Otros"
 
 /** Orden fijo de las categorías conocidas; el resto va alfabético. */
-private val CATEGORY_ORDER = listOf("Cyberpunk", "Retro", "Oficina")
+private val CATEGORY_ORDER = listOf("Pokedex")
 
 /** Ordena las categorías: primero las conocidas en su orden, luego el resto
  *  alfabético, y "Otros" (sin carpeta) al final. */

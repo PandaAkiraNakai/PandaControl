@@ -381,6 +381,8 @@ data class ThemeDef(
     val backgroundImage: String = "",
     val backgroundImages: List<String> = emptyList(),
     val backgroundEffect: String = "",
+    /** Prefijo decorativo de titulares: "auto" | "none" | prefijo propio. */
+    val chrome: String = "auto",
     val colors: ThemeColors,
 )
 
