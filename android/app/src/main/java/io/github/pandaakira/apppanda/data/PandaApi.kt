@@ -34,6 +34,7 @@ import io.github.pandaakira.apppanda.data.models.NetStatus
 import io.github.pandaakira.apppanda.data.models.ProcessesResponse
 import io.github.pandaakira.apppanda.data.models.ScreensResponse
 import io.github.pandaakira.apppanda.data.models.ServicesResponse
+import io.github.pandaakira.apppanda.data.models.SessionStateResponse
 import io.github.pandaakira.apppanda.data.models.SseEvent
 import io.github.pandaakira.apppanda.data.models.SystemStatus
 import io.github.pandaakira.apppanda.data.models.TempsResponse
@@ -177,6 +178,9 @@ class PandaApi(
 
     suspend fun inhibitState(): InhibitResponse =
         client.get(url("/api/v1/inhibit")).body()
+
+    suspend fun sessionState(): SessionStateResponse =
+        client.get(url("/api/v1/session")).body()
 
     suspend fun screens(): ScreensResponse =
         client.get(url("/api/v1/screens")).body()

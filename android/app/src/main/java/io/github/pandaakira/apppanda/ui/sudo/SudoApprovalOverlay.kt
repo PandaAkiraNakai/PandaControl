@@ -6,9 +6,6 @@ import io.github.pandaakira.apppanda.ui.themes.ThemedBackground
 
 import android.app.NotificationManager
 import android.content.Context
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
-import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -46,6 +43,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.github.pandaakira.apppanda.PandaApp
 import io.github.pandaakira.apppanda.service.AlertsService
+import io.github.pandaakira.apppanda.ui.components.confirmIdentity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -248,56 +246,20 @@ private fun cancelSudoNotif(context: Context, rid: String) {
         ?.cancel(notifId)
 }
 
-/**
- * Pide confirmar identidad (huella o, como respaldo, PIN/patrón del
- * dispositivo) antes de aprobar una elevación de privilegios. `onApproved`
- * solo se invoca si la autenticación tuvo éxito; cualquier cancelación o error
- * llama a `onDenied` sin aprobar.
- *
- * Si el dispositivo no tiene ningún método de bloqueo configurado, no podemos
- * exigir biometría — aprobamos directo (el factor de seguridad real es ya
- * tener la app y el token).
- */
+/** Confirma identidad (ver [confirmIdentity]) antes de aprobar un sudo. */
 private fun promptSudoBiometric(
     activity: FragmentActivity,
     command: String,
     pcName: String,
     onApproved: () -> Unit,
     onDenied: () -> Unit,
-) {
-    val allowed = BiometricManager.Authenticators.BIOMETRIC_STRONG or
-        BiometricManager.Authenticators.DEVICE_CREDENTIAL
-    if (BiometricManager.from(activity).canAuthenticate(allowed) !=
-        BiometricManager.BIOMETRIC_SUCCESS
-    ) {
-        onApproved()
-        return
-    }
-    val prompt = BiometricPrompt(
-        activity,
-        ContextCompat.getMainExecutor(activity),
-        object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationSucceeded(
-                result: BiometricPrompt.AuthenticationResult,
-            ) = onApproved()
-
-            override fun onAuthenticationError(
-                errorCode: Int,
-                errString: CharSequence,
-            ) = onDenied()
-        },
-    )
-    val info = BiometricPrompt.PromptInfo.Builder()
-        .setTitle("Aprobar elevación sudo")
-        .setSubtitle(
-            if (command.isNotBlank()) "Comando: ${command.take(70)}"
-            else "Elevación de privilegios en $pcName",
-        )
-        .setDescription(
-            "Al confirmar tu identidad APRUEBAS esta solicitud de sudo en " +
-                "$pcName. Cancela para no aprobar.",
-        )
-        .setAllowedAuthenticators(allowed)
-        .build()
-    prompt.authenticate(info)
-}
+) = confirmIdentity(
+    activity = activity,
+    title = "Aprobar elevación sudo",
+    subtitle = if (command.isNotBlank()) "Comando: ${command.take(70)}"
+               else "Elevación de privilegios en $pcName",
+    description = "Al confirmar tu identidad APRUEBAS esta solicitud de sudo en " +
+        "$pcName. Cancela para no aprobar.",
+    onApproved = onApproved,
+    onDenied = onDenied,
+)

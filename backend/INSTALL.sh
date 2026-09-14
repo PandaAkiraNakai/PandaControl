@@ -61,6 +61,12 @@ install -m 0755 -o root -g root \
     "$SRC_DIR/bin/sudo-app-askpass.py" \
     /usr/local/bin/sudo-app-askpass
 
+# 2e. apppanda-desbloqueo (botón Desbloquear: login desde la pantalla de inicio)
+echo "==> Installing /usr/local/bin/apppanda-desbloqueo"
+install -m 0755 -o root -g root \
+    "$SRC_DIR/bin/apppanda-desbloqueo.py" \
+    /usr/local/bin/apppanda-desbloqueo
+
 # 3. systemd unit (con sustitución de __TARGET_USER__ / __TARGET_GROUP__)
 echo "==> Installing /etc/systemd/system/apppanda-backend.service"
 sed -e "s|__TARGET_USER__|$TARGET_USER|g" \
@@ -69,6 +75,13 @@ sed -e "s|__TARGET_USER__|$TARGET_USER|g" \
     > /etc/systemd/system/apppanda-backend.service
 chown root:root /etc/systemd/system/apppanda-backend.service
 chmod 0644 /etc/systemd/system/apppanda-backend.service
+
+echo "==> Installing /etc/systemd/system/apppanda-desbloqueo.service"
+sed -e "s|__TARGET_USER__|$TARGET_USER|g" \
+    "$SRC_DIR/config/apppanda-desbloqueo.service" \
+    > /etc/systemd/system/apppanda-desbloqueo.service
+chown root:root /etc/systemd/system/apppanda-desbloqueo.service
+chmod 0644 /etc/systemd/system/apppanda-desbloqueo.service
 
 # 3b. polkit rule narrow-scope (Fase 3: poder + manage-units)
 echo "==> Installing /etc/polkit-1/rules.d/50-apppanda-backend.rules"

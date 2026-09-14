@@ -27,6 +27,9 @@ systemctl disable apppanda-backend 2>/dev/null || true
 echo "==> Removing /etc/systemd/system/apppanda-backend.service"
 rm -f /etc/systemd/system/apppanda-backend.service
 
+echo "==> Removing apppanda-desbloqueo (unit + binary)"
+rm -f /etc/systemd/system/apppanda-desbloqueo.service /usr/local/bin/apppanda-desbloqueo
+
 echo "==> Removing polkit rule"
 rm -f /etc/polkit-1/rules.d/50-apppanda-backend.rules
 

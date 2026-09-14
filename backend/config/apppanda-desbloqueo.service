@@ -1,0 +1,29 @@
+[Unit]
+Description=apppanda — iniciar la sesión gráfica desde la pantalla de login (botón Desbloquear)
+After=plasmalogin.service
+
+# Sin [Install]: no se habilita. El backend lo arranca con
+# `systemctl start apppanda-desbloqueo.service`, permitido sin prompt por la
+# regla polkit 50-apppanda-backend.rules. Detalle en bin/apppanda-desbloqueo.py.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/apppanda-desbloqueo
+# INSTALL.sh reemplaza __TARGET_USER__ con el usuario del backend.
+Environment=APPPANDA_USER=__TARGET_USER__
+TimeoutStartSec=30
+
+# Corre como root porque el socket del greeter es 0700 del usuario
+# plasmalogin. PrivateTmp NO: ese socket vive en el /tmp real.
+ProtectSystem=strict
+ProtectHome=yes
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+NoNewPrivileges=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes

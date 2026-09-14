@@ -47,6 +47,8 @@ polkit.addRule(function(action, subject) {
             "apppanda-backend.service": true,
             // Oneshot del botón "Aplicar updates". Solo start/status.
             "pacman-update.service": true,
+            // Oneshot del botón "Desbloquear" (login desde la pantalla de inicio).
+            "apppanda-desbloqueo.service": true,
         };
         if (allowedUnits[unit]) {
             return polkit.Result.YES;

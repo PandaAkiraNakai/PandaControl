@@ -45,6 +45,7 @@ import io.github.pandaakira.apppanda.ui.components.EmptyState
 import io.github.pandaakira.apppanda.ui.components.KeyValue
 import io.github.pandaakira.apppanda.ui.components.PandaCard
 import io.github.pandaakira.apppanda.ui.components.StatBar
+import io.github.pandaakira.apppanda.ui.components.UnlockCard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -117,6 +118,8 @@ fun HomeScreen(app: PandaApp, onGoSetup: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            // Solo aparece si el PC está bloqueado o en la pantalla de login.
+            UnlockCard(app = app, onlyWhenNeeded = true, modifier = Modifier.padding(top = 12.dp))
         }
 
         error?.let {

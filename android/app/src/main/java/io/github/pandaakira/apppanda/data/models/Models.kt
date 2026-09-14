@@ -206,6 +206,14 @@ data class RunningGameResponse(val running: RunningGame? = null)
 @Serializable
 data class InhibitResponse(val active: Boolean = false)
 
+/** Sesión gráfica del PC: "login" (pantalla de inicio de sesión), "locked" o "unlocked". */
+@Serializable
+data class SessionStateResponse(
+    val state: String = "",
+    val session: String? = null,
+    val type: String? = null,
+)
+
 @Serializable
 data class TerminalResponse(
     val stdout: String = "",

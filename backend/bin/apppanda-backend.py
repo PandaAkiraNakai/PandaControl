@@ -23,6 +23,7 @@ expuesto en HTTP; los clientes Android dibujan con bibliotecas nativas).
 
 import json
 import os
+import pwd
 import re
 import shutil
 import sqlite3
@@ -2342,6 +2343,8 @@ POWER_CMDS = {
 
 
 def execute_power(action: str) -> str:
+    if action == "unlock":
+        return execute_unlock()
     cmd = POWER_CMDS.get(action)
     if cmd is None:
         return f"acción desconocida: {action}"
@@ -2357,6 +2360,96 @@ def execute_power(action: str) -> str:
         return "ok"
     return ((proc.stderr or proc.stdout or "").strip()
             or f"exit {proc.returncode}")
+
+
+# Desbloqueo ──────────────────────────────────────────────────────────────────
+
+UNLOCK_UNIT = "apppanda-desbloqueo.service"
+
+# Códigos de salida de /usr/local/bin/apppanda-desbloqueo (ver su docstring).
+UNLOCK_EXIT_MESSAGES = {
+    10: "ya había una sesión gráfica activa",
+    11: "no se encontró la pantalla de inicio de sesión de plasmalogin",
+    12: "plasmalogin rechazó la contraseña (revisa [sudo_app].password_file)",
+    13: "plasmalogin no respondió",
+    14: "falta la contraseña en [sudo_app].password_file",
+    15: "configuración [desbloqueo] inválida",
+}
+
+
+def graphical_session() -> dict | None:
+    """Sesión gráfica (wayland/x11) del usuario del daemon, prefiriendo la
+    activa. None = no hay ninguna: el PC está en la pantalla de login."""
+    user = pwd.getpwuid(os.getuid()).pw_name
+    found = None
+    for sid in sorted(list_sessions()):
+        out = run(["loginctl", "show-session", sid, "-p", "Name", "-p", "Type",
+                   "-p", "Class", "-p", "State", "-p", "Active", "-p", "LockedHint"])
+        props = dict(l.split("=", 1) for l in out.splitlines() if "=" in l)
+        if (props.get("Name") != user or props.get("Class") != "user"
+                or props.get("Type") not in ("wayland", "x11")
+                or props.get("State") == "closing"):
+            continue
+        session = {
+            "id": sid,
+            "type": props["Type"],
+            "active": props.get("Active") == "yes",
+            "locked": props.get("LockedHint") == "yes",
+        }
+        if session["active"]:
+            return session
+        found = found or session
+    return found
+
+
+def session_state() -> dict:
+    """login = pantalla de inicio de sesión (sin sesión gráfica activa),
+    locked = sesión con la pantalla bloqueada, unlocked = en uso."""
+    s = graphical_session()
+    if s is None or not s["active"]:
+        return {"state": "login", "session": s["id"] if s else None, "type": None}
+    return {"state": "locked" if s["locked"] else "unlocked",
+            "session": s["id"], "type": s["type"]}
+
+
+def execute_unlock() -> str:
+    s = graphical_session()
+    if s is not None and s["active"]:
+        if not s["locked"]:
+            return "ok"
+        out = run(["loginctl", "unlock-session", s["id"]]).strip()
+        if out:
+            return out
+        # KScreenLocker baja LockedHint al cerrar su greeter; tarda <1 s.
+        for _ in range(20):
+            time.sleep(0.25)
+            current = graphical_session()
+            if current is None or not current["locked"]:
+                return "ok"
+        return "la sesión sigue bloqueada"
+
+    # Pantalla de login: el oneshot (root) le pasa la contraseña a plasmalogin.
+    try:
+        proc = subprocess.run(
+            ["systemctl", "start", UNLOCK_UNIT],
+            capture_output=True, text=True, timeout=40,
+        )
+    except subprocess.TimeoutExpired:
+        return "timeout"
+    if proc.returncode != 0:
+        status = run(["systemctl", "show", "-p", "ExecMainStatus", "--value",
+                      UNLOCK_UNIT]).strip()
+        if status.isdigit() and int(status) in UNLOCK_EXIT_MESSAGES:
+            return UNLOCK_EXIT_MESSAGES[int(status)]
+        return ((proc.stderr or proc.stdout or "").strip()
+                or f"exit {proc.returncode}")
+    # logind registra la sesión apenas PAM la abre, antes de startplasma.
+    for _ in range(40):
+        current = graphical_session()
+        if current is not None and current["active"]:
+            return "ok"
+        time.sleep(0.5)
+    return "login aceptado, pero la sesión gráfica todavía no aparece"
 
 
 def execute_kill(pid: str) -> str:
@@ -2714,6 +2807,7 @@ def main() -> None:
             steam_launch=steam_launch,
             wol_send=wol_send,
             execute_power=execute_power,
+            session_state=session_state,
             execute_kill=execute_kill,
             execute_svc=execute_svc,
             execute_app=execute_app,

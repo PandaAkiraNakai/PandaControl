@@ -260,3 +260,14 @@ dir = "~/.config/apppanda-backend/temas"
 enabled = false
 timeout_s = 20
 max_output_kb = 64
+
+# ─── Desbloquear (botón en Energía / Inicio) ─────────────────────────────
+#
+# Con la sesión bloqueada la desbloquea (loginctl unlock-session). Si el PC
+# está en la pantalla de inicio de sesión de Plasma Login (recién encendido
+# o reiniciado), apppanda-desbloqueo.service inicia sesión con la contraseña
+# de [sudo_app].password_file, igual que al escribirla a mano, así se abren
+# KWallet y el llavero. Solo hace falta esta sección para cambiar la sesión.
+# [desbloqueo]
+# sesion = "plasma"    # archivo en /usr/share/{wayland-sessions,xsessions}
+# tipo = "wayland"     # "wayland" o "x11"

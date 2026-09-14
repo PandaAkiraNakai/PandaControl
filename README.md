@@ -43,7 +43,7 @@ PC; si no, no existe para nadie más.
 | **Trends** | Gráficas históricas 1h / 6h / 24h, dibujadas nativamente en Canvas. |
 | **Media** | Control MPRIS (play/pausa, seek ±15s, fullscreen del video), **volumen maestro + por aplicación + silenciar** y **mute/volumen del micrófono** (sliders, vía `pactl`), cambiar el sink de audio, prender/apagar pantallas (DPMS), **escenas** (presets que combinan outputs + foco + audio de un toque), lanzar apps GUI, **lanzar y cerrar juegos de Steam** (con detección del juego en curso) y comandos del WM `niri` desde una whitelist estricta. |
 | **Control** | Mouse y teclado remotos: un **touchpad** que mueve el cursor por deltas, clic izquierdo/medio/derecho, scroll de dos dedos y swipe horizontal de dos dedos para navegar atrás/adelante, teclas especiales y atajos (Esc, Tab, flechas, Ctrl+C/V/Z, Alt+Tab, etc.), escritura de texto libre y **portapapeles bidireccional** (traer del PC / enviar al PC, vía `wl-clipboard`). Mouse vía `ydotool`, teclado vía `wtype`. |
-| **Sistema** | Apagar / reiniciar / suspender / bloquear (con confirmación), **inhibir la suspensión** (útil mientras descarga algo), una **mini terminal** opt-in (`bash -lc`, sin sudo), listar y matar procesos, gestionar servicios (start/stop/restart), ver logs de `journalctl`, revisar y aplicar actualizaciones (`checkupdates`), ver vecinos de la LAN y consultar tus VPS por SSH. |
+| **Sistema** | Apagar / reiniciar / suspender / bloquear (con confirmación), **desbloquear** con huella (también inicia sesión si el PC quedó en la pantalla de login tras encender o reiniciar), **inhibir la suspensión** (útil mientras descarga algo), una **mini terminal** opt-in (`bash -lc`, sin sudo), listar y matar procesos, gestionar servicios (start/stop/restart), ver logs de `journalctl`, revisar y aplicar actualizaciones (`checkupdates`), ver vecinos de la LAN y consultar tus VPS por SSH. |
 | **Archivos** | Gestor completo de los directorios que compartas: navegar subcarpetas (con breadcrumb), descargar al celular, subir a la carpeta actual, crear carpeta, renombrar, borrar (archivos y carpetas, con confirmación) y abrir cualquier archivo/carpeta en el PC con su app por defecto (`xdg-open`). Anti path-traversal: todo queda confinado al `shared_dir`. |
 | **Temas** | Cambiar el look completo de la app: cada tema es un paquete que define **colores, fuente, estilo de iconos, formas/bordes y fondos opcionales** (imágenes de la misma carpeta; si hay varias, eliges con qué wallpaper aplicar el tema). Los temas viven como archivos `*.json` en una carpeta del PC (`[themes].dir`); la app los lista y aplica al vuelo. Para agregar un tema basta dejar un `.json` nuevo — no hay que recompilar. Incluye *Pokédex Gen I* (default), con su pantalla LCD animada de fondo. |
 | **Push del sistema** | Un `ForegroundService` mantiene el SSE vivo en segundo plano y dispara notificaciones nativas ante alertas con histéresis (CPU/RAM/disco/temps/GPU/carga), servicios caídos, sesiones nuevas, boot o salida de suspensión. |
@@ -360,6 +360,7 @@ GET  /api/v1/logs?priority=err&n=30
 GET  /api/v1/metrics?range=1h|6h|24h
 GET  /api/v1/audio/sinks   (incluye master, mic y apps: volumen %/mute)
 GET  /api/v1/audio/apps    ·  /scenes  ·  /games/running  ·  /inhibit
+GET  /api/v1/session       (login | locked | unlocked)
 GET  /api/v1/clipboard     (texto del portapapeles del PC)
 GET  /api/v1/screens
 GET  /api/v1/media/players  ·  /media/{player}/status
@@ -371,7 +372,7 @@ GET  /api/v1/files[?dir=N&rel=SUBPATH]  ·  /files/download?dir=N&rel=SUBPATH&na
 GET  /api/v1/events   (SSE: metric_tick / alert / service_failed /
                        session_new / boot / resume / sudo_request)
 
-POST /api/v1/power/{off|reboot|suspend|lock}        X-Confirm: true
+POST /api/v1/power/{off|reboot|suspend|lock|unlock} X-Confirm: true
 POST /api/v1/processes/{pid}/kill                   X-Confirm: true
 POST /api/v1/services/{unit}/{start|stop|restart}   X-Confirm: true
 POST /api/v1/updates/apply                          X-Confirm: true

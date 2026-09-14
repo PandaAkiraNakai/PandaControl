@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -28,6 +30,7 @@ import io.github.pandaakira.apppanda.ui.components.ActionResultBanner
 import io.github.pandaakira.apppanda.ui.components.ConfirmDialog
 import io.github.pandaakira.apppanda.ui.components.PandaCard
 import io.github.pandaakira.apppanda.ui.components.ScreenHeader
+import io.github.pandaakira.apppanda.ui.components.UnlockCard
 import io.github.pandaakira.apppanda.ui.components.pandaDeco
 import io.github.pandaakira.apppanda.ui.components.rememberActionExecutor
 import kotlinx.coroutines.Dispatchers
@@ -69,10 +72,11 @@ fun PowerScreen(app: PandaApp) {
     )
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         ScreenHeader("POWER :: actions", "confirmación 2-pasos requerida")
+        UnlockCard(app = app)
         options.forEach { opt ->
             Button(
                 onClick = { pending = opt },

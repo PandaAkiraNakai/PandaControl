@@ -391,6 +391,8 @@ class _Handler(BaseHTTPRequestHandler):
             body = {"running": self.api.steam_running(api.ctx.cfg)}
         elif path == "/api/v1/inhibit":
             body = {"active": self.api.power_inhibit_state()}
+        elif path == "/api/v1/session":
+            body = self.api.session_state()
         elif path == "/api/v1/screens":
             body = self._screens()
         elif path == "/api/v1/media/players":
