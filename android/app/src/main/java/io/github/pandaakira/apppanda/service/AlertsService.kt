@@ -33,9 +33,9 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 /**
- * ForegroundService que mantiene una conexión SSE al backend (via
- * PandaRepository.events) y muestra notificaciones del sistema para
- * alertas, servicios failed, boot, resume.
+ * ForegroundService que mantiene las conexiones SSE con los backends (via
+ * PandaRepository) y muestra notificaciones del sistema: alertas, servicios
+ * failed, boot y resume del PC activo, y solicitudes sudo de TODOS los PCs.
  *
  * Se activa/desactiva desde Ajustes con el toggle "Notificaciones push".
  * Al desactivar, llamar STOP con startService(intent.setAction(STOP_ACTION))
@@ -61,6 +61,9 @@ class AlertsService : Service() {
             val intent = Intent(context, AlertsService::class.java).setAction(ACTION_STOP)
             context.startService(intent)
         }
+
+        /** Id de notificación estable por solicitud (PC + rid). */
+        fun sudoNotifId(key: String): Int = SUDO_NOTIF_BASE + (key.hashCode() and 0x7fff)
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -103,7 +106,10 @@ class AlertsService : Service() {
         if (collectorJob == null) {
             val app = applicationContext as PandaApp
             collectorJob = scope.launch {
-                app.repository.events.collect { evt -> handleEvent(evt) }
+                launch { app.repository.events.collect { evt -> handleEvent(evt) } }
+                // Sudo de todos los PCs, no solo del activo: si no, un sudo del
+                // laptop con la torre seleccionada nunca llegaba.
+                launch { app.repository.sudoRequests.collect { req -> handleSudoRequest(req) } }
             }
             // Mantiene el filtro de categorías al día sin releer DataStore por
             // cada evento.
@@ -127,7 +133,7 @@ class AlertsService : Service() {
             NotificationChannel(
                 CHANNEL_SERVICE, "Panda Control service",
                 NotificationManager.IMPORTANCE_LOW,
-            ).apply { description = "Conexión persistente con el PC activo." },
+            ).apply { description = "Conexión persistente con tus PCs." },
         )
         nm.createNotificationChannel(
             NotificationChannel(
@@ -170,7 +176,7 @@ class AlertsService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_SERVICE)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("Panda Control")
-            .setContentText("Escuchando eventos del PC activo")
+            .setContentText("Escuchando tus PCs")
             .setOngoing(true)
             .setSilent(true)
             .setContentIntent(openAppPendingIntent())
@@ -179,10 +185,8 @@ class AlertsService : Service() {
     }
 
     private fun handleEvent(evt: SseEvent) {
-        if (evt.type == "sudo_request") {
-            handleSudoRequest(evt)
-            return
-        }
+        // Las solicitudes sudo llegan por repository.sudoRequests (de todos los PCs).
+        if (evt.type == "sudo_request") return
         // Filtro elegido por el usuario en Ajustes. Una categoría desconocida
         // (forEvent == null) nunca se silencia: ante la duda, notificamos.
         val cat = NotifCategory.forEvent(evt.type, evt.key)
@@ -204,27 +208,17 @@ class AlertsService : Service() {
         showNotification(title, body)
     }
 
-    private fun handleSudoRequest(evt: SseEvent) {
-        val rid = evt.rid ?: return
-        val prompt = evt.prompt.orEmpty()
-        val command = evt.command.orEmpty()
-        val timeoutS = evt.timeoutS ?: 60
+    private fun handleSudoRequest(req: SudoPending) {
+        val command = req.command
+        val prompt = req.prompt
+        val timeoutS = req.timeoutS
+        val notifId = sudoNotifId(req.key)
 
-        // Notif id estable por rid para reusar si llega duplicado.
-        val notifId = SUDO_NOTIF_BASE + (rid.hashCode() and 0x7fff)
-
-        // Guardar en el repo: AppNav observa este StateFlow y muestra un
-        // dialog modal dentro de la app (no más Activity separada).
+        // Encolar en el repo: AppNav observa esa cola y muestra un dialog
+        // modal dentro de la app. Si ya estaba (el backend reenvía las
+        // pendientes al reconectar el SSE), no volver a sonar ni vibrar.
         val app = applicationContext as PandaApp
-        app.repository.setPendingSudo(
-            SudoPending(
-                rid = rid,
-                prompt = prompt,
-                command = command,
-                timeoutS = timeoutS,
-                receivedAtMs = System.currentTimeMillis(),
-            ),
-        )
+        if (!app.repository.addPendingSudo(req)) return
 
         // PendingIntent simple: abre MainActivity. El dialog ya está pendiente
         // en el StateFlow del repo, se mostrará al composer la UI.
@@ -234,7 +228,7 @@ class AlertsService : Service() {
                 Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
         val pi = PendingIntent.getActivity(
-            this, rid.hashCode(), openIntent,
+            this, req.key.hashCode(), openIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
@@ -250,7 +244,7 @@ class AlertsService : Service() {
         }
         val notif = NotificationCompat.Builder(this, CHANNEL_SUDO)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("🔐 Sudo — ¿aprobar?")
+            .setContentTitle("🔐 Sudo en ${req.pcName} — ¿aprobar?")
             .setContentText(shortDesc)
             .setStyle(NotificationCompat.BigTextStyle().bigText(bigText))
             .setPriority(NotificationCompat.PRIORITY_MAX)

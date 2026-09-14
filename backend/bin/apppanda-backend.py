@@ -200,6 +200,10 @@ class Audit:
 
 # ─── Metrics (snapshots de sistema) ──────────────────────────────────────────
 
+# Claves de temperatura en la salida de `sensors -j` (temp1_input, temp2_input…).
+_TEMP_INPUT_RE = re.compile(r"temp\d+_input")
+
+
 class Metrics:
     """Estado entre snapshots para deltas (CPU%, throughput de red)."""
 
@@ -311,7 +315,12 @@ class Metrics:
                         if not isinstance(sensor, dict):
                             continue
                         for k, v in sensor.items():
-                            if k.endswith("_input") and isinstance(v, (int, float)):
+                            # Solo temperaturas: `sensors -j` también trae
+                            # ventiladores (fanN_input, en RPM), voltajes,
+                            # potencia y frecuencias. Antes se tomaba el
+                            # primer *_input y el `cpu_fan` de ASUS entraba
+                            # como "CPU" a ~1900 °C y disparaba la alerta.
+                            if _TEMP_INPUT_RE.fullmatch(k) and isinstance(v, (int, float)):
                                 rows.append({
                                     "chip": chip, "label": label, "c": float(v),
                                 })

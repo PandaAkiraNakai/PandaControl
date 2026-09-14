@@ -42,8 +42,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.github.pandaakira.apppanda.PandaApp
+import io.github.pandaakira.apppanda.data.PandaApi
 import io.github.pandaakira.apppanda.service.AlertsService
 import io.github.pandaakira.apppanda.ui.components.confirmIdentity
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -51,68 +53,87 @@ import kotlinx.coroutines.withContext
 
 /**
  * Overlay modal de aprobación sudo. Se muestra sobre cualquier pantalla
- * de la app cuando hay una solicitud pendiente en `repository.pendingSudo`.
+ * de la app cuando hay solicitudes pendientes en `repository.pendingSudo`
+ * (de cualquier PC, una a la vez en orden de llegada).
  * Reemplaza a la antigua SudoApprovalActivity — al estar dentro de la app,
  * comparte estado y backstack normales.
  */
 @Composable
 fun SudoApprovalOverlay(app: PandaApp, theme: PandaTheme) {
-    val pending by app.repository.pendingSudo.collectAsState()
-    val req = pending ?: return
+    val queue by app.repository.pendingSudo.collectAsState()
+    val req = queue.firstOrNull() ?: return
 
     val context = LocalContext.current
     val activity = context as? FragmentActivity
-    val api by app.repository.api.collectAsState()
-    val activeProfile by app.settings.activeProfile.collectAsState(initial = null)
-    val pcName = activeProfile?.name?.ifBlank { "PC" } ?: "PC"
+    // El PC que pidió el sudo, que puede no ser el perfil activo.
+    val pcName = req.pcName
+    val waiting = queue.size - 1
     val scope = rememberCoroutineScope()
 
     val totalS = req.timeoutS
-    var remaining by remember(req.rid) {
+    var remaining by remember(req.key) {
         mutableIntStateOf(
             (totalS - ((System.currentTimeMillis() - req.receivedAtMs) / 1000).toInt())
                 .coerceAtLeast(0),
         )
     }
-    var busy by remember(req.rid) { mutableStateOf(false) }
-    var result by remember(req.rid) { mutableStateOf<String?>(null) }
+    var busy by remember(req.key) { mutableStateOf(false) }
+    var result by remember(req.key) { mutableStateOf<String?>(null) }
     // Mientras el sheet biométrico está arriba: bloquea los botones para no
     // lanzar varios prompts. No usa `busy` (ese marca el envío de la decisión).
-    var authing by remember(req.rid) { mutableStateOf(false) }
+    var authing by remember(req.key) { mutableStateOf(false) }
 
-    LaunchedEffect(req.rid) {
-        while (remaining > 0 && !busy && result == null) {
+    LaunchedEffect(req.key) {
+        while (remaining > 0 && result == null) {
             delay(1_000)
             remaining = (totalS - ((System.currentTimeMillis() - req.receivedAtMs) / 1000).toInt())
                 .coerceAtLeast(0)
         }
-        if (result == null) {
+        // Con una decisión en vuelo no se limpia: decide() lo hace al terminar.
+        if (result == null && !busy) {
             // Timeout: limpiar el pending sin enviar decisión (el backend
             // marca expired solo cuando vence el wait del askpass).
-            cancelSudoNotif(context, req.rid)
-            app.repository.clearPendingSudo()
+            cancelSudoNotif(context, req.key)
+            app.repository.clearPendingSudo(req.key)
         }
+    }
+
+    // Muestra el error un momento y saca la solicitud de la cola, para que el
+    // dialog no quede pegado (p. ej. si ya venció o la decidió otro cliente).
+    suspend fun failAndDismiss(msg: String) {
+        result = "error: $msg"
+        delay(2_500)
+        cancelSudoNotif(context, req.key)
+        app.repository.clearPendingSudo(req.key)
     }
 
     fun decide(approved: Boolean) {
         if (busy) return
         busy = true
         scope.launch {
-            val client = api
-            if (client == null) {
-                result = "sin backend"
-                busy = false
-                return@launch
-            }
             try {
-                withContext(Dispatchers.IO) { client.sudoDecision(req.rid, approved) }
+                // La decisión va al backend del PC que pidió el sudo, no al
+                // perfil activo.
+                val res = withContext(Dispatchers.IO) {
+                    val client = PandaApi(req.baseUrl, req.token)
+                    try {
+                        client.sudoDecision(req.rid, approved)
+                    } finally {
+                        client.close()
+                    }
+                }
+                if (res.error != null) {
+                    failAndDismiss(res.error.take(60))
+                    return@launch
+                }
                 result = if (approved) "APROBADO" else "RECHAZADO"
                 delay(700)
-                cancelSudoNotif(context, req.rid)
-                app.repository.clearPendingSudo()
+                cancelSudoNotif(context, req.key)
+                app.repository.clearPendingSudo(req.key)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                result = "error: ${e.message?.take(60) ?: e::class.simpleName}"
-                busy = false
+                failAndDismiss(e.message?.take(60) ?: e::class.simpleName.orEmpty())
             }
         }
     }
@@ -146,7 +167,7 @@ fun SudoApprovalOverlay(app: PandaApp, theme: PandaTheme) {
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 Text(
-                    "// SUDO REQUEST",
+                    if (waiting > 0) "// SUDO REQUEST · +$waiting en cola" else "// SUDO REQUEST",
                     style = MaterialTheme.typography.labelSmall,
                     color = LocalPandaColors.current.yellow,
                 )
@@ -154,6 +175,11 @@ fun SudoApprovalOverlay(app: PandaApp, theme: PandaTheme) {
                     "¿Aprobar elevación de privilegios?",
                     style = MaterialTheme.typography.headlineMedium,
                     color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    "en $pcName",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = LocalPandaColors.current.cyan,
                 )
 
                 if (req.prompt.isNotBlank()) {
@@ -240,8 +266,8 @@ fun SudoApprovalOverlay(app: PandaApp, theme: PandaTheme) {
     }
 }
 
-private fun cancelSudoNotif(context: Context, rid: String) {
-    val notifId = AlertsService.SUDO_NOTIF_BASE + (rid.hashCode() and 0x7fff)
+private fun cancelSudoNotif(context: Context, key: String) {
+    val notifId = AlertsService.sudoNotifId(key)
     (context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager)
         ?.cancel(notifId)
 }
