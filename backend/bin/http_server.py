@@ -1091,7 +1091,14 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _screens(self) -> dict:
         outputs, err = self.api.niri_outputs()
-        return {"outputs": outputs, "error": err, "compositor": self.api.active_compositor()}
+        return {
+            "outputs": outputs,
+            "error": err,
+            "compositor": self.api.active_compositor(),
+            # Ids de comandos de ventana que funcionan en este escritorio: la
+            # app dibuja solo esos botones.
+            "commands": self.api.wm_cmds(),
+        }
 
     def _media_players(self) -> dict:
         cfg = self.api.ctx.cfg

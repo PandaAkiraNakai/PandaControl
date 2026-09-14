@@ -6,7 +6,9 @@ Mouse: socket DGRAM persistente a ydotoold (escribe `struct input_event`
     sudo pacman -S ydotool
     systemctl --user enable --now ydotool.service
 
-Teclado/texto: wtype (no necesita daemon).
+Teclado/texto: wtype (no necesita daemon). En compositores sin
+  zwp_virtual_keyboard_v1 (KDE Plasma) cae a ydotoold, traduciendo el texto con
+  la distribución de teclado de la sesión (libxkbcommon).
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ import re
 import socket
 import struct
 import subprocess
+import sys
 import threading
 import time
 
@@ -24,11 +27,18 @@ import time
 # ─── Entorno ──────────────────────────────────────────────────────────────────
 
 def _env() -> dict:
+    """Entorno Wayland de la sesión viva: COSMIC usaba wayland-1 y KWin wayland-0,
+    así que se toma el socket más reciente en vez de fijar uno."""
     uid = os.getuid()
+    runtime_dir = f"/run/user/{uid}"
+    socks = sorted(
+        (p for p in glob.glob(f"{runtime_dir}/wayland-*") if not p.endswith(".lock")),
+        key=os.path.getmtime, reverse=True,
+    )
     return {
         **os.environ,
-        "XDG_RUNTIME_DIR": f"/run/user/{uid}",
-        "WAYLAND_DISPLAY": "wayland-1",
+        "XDG_RUNTIME_DIR": runtime_dir,
+        "WAYLAND_DISPLAY": os.path.basename(socks[0]) if socks else "wayland-0",
     }
 
 
@@ -256,6 +266,13 @@ _BUTTON_CLI = {
 }
 
 
+def mouse_move_absolute(x: int, y: int) -> str:
+    """Teletransporta el puntero a una coordenada del layout (no pasa por el
+    interpolador: es un salto, no un gesto). Lo usa "fijar monitor" en COSMIC,
+    donde la pantalla activa es la que tiene el cursor."""
+    return _ydotool_cli(["mousemove", "--absolute", "-x", str(int(x)), "-y", str(int(y))])
+
+
 def mouse_click(button: str) -> str:
     code = _BUTTON_CODES.get(button)
     if code is None:
@@ -350,13 +367,26 @@ def _cursor_nudge() -> None:
     _YD.send(_move_payload(-1, 0))
 
 
+def cursor_jiggle(pulsos: int = 8, amplitud: int = 70) -> str:
+    """Sacude el puntero para ubicarlo a ojo. Es el reemplazo del cursor grande
+    en escritorios que no releen el tamaño en caliente: COSMIC toma XCURSOR_SIZE
+    al arrancar la sesión, así que no hay ninguna config que editar al vuelo.
+    Queda en el mismo lugar (los pulsos se cancelan de ida y vuelta)."""
+    for i in range(pulsos):
+        _YD.send(_move_payload(amplitud if i % 2 == 0 else -amplitud, 0))
+        time.sleep(0.05)
+    return "ok"
+
+
 def cursor_highlight(big: int = 72, seconds: float = 2.0) -> str:
     """Agranda el cursor de niri a `big` px durante `seconds` y lo devuelve a su
     tamaño normal. Pensado para ubicar el puntero en la tele. Si se pulsa de
     nuevo mientras está grande, extiende la ventana en vez de encoger antes."""
     found = _find_cursor_cfg()
     if found is None:
-        return "no encontré xcursor-size en la config de niri"
+        # Sin config de niri (COSMIC, Plasma) no hay tamaño que cambiar en
+        # caliente: se sacude el puntero, que cumple el mismo propósito.
+        return cursor_jiggle()
     path, cur = found
     with _CURSOR_LOCK:
         # El tamaño normal es el de reposo: lo capturamos cuando vemos un valor
@@ -382,6 +412,228 @@ def cursor_highlight(big: int = 72, seconds: float = 2.0) -> str:
 
     threading.Thread(target=_revert, daemon=True, name="cursor-revert").start()
     return "ok"
+
+
+
+# ─── Teclado sin zwp_virtual_keyboard_v1 (KDE Plasma) ─────────────────────────
+#
+# KWin no ofrece el protocolo de teclado virtual a clientes comunes, así que
+# wtype falla con "Compositor does not support the virtual keyboard protocol".
+# En ese caso las teclas salen por el uinput de ydotoold, que son códigos de
+# tecla físicos: el compositor los traduce con SU distribución (p. ej. "es").
+# Para escribir texto hace falta el mapa inverso carácter → tecla+modificadores
+# de esa distribución; se arma con libxkbcommon (ctypes, sin dependencias).
+
+import ctypes
+import ctypes.util
+import unicodedata
+
+KEY_LEFTSHIFT, KEY_LEFTCTRL, KEY_LEFTALT, KEY_RIGHTALT, KEY_LEFTMETA = 42, 29, 56, 100, 125
+
+_EVDEV_KEYS: dict[str, int] = {
+    "Return": 28, "Escape": 1, "Tab": 15, "BackSpace": 14, "Delete": 111,
+    "Up": 103, "Down": 108, "Left": 105, "Right": 106, "Home": 102, "End": 107,
+    "Page_Up": 104, "Page_Down": 109, "Print": 99, "super_L": KEY_LEFTMETA,
+    "F1": 59, "F2": 60, "F3": 61, "F4": 62, "F5": 63, "F6": 64, "F7": 65,
+    "F8": 66, "F9": 67, "F10": 68, "F11": 87, "F12": 88,
+}
+_EVDEV_MODS = {"ctrl": KEY_LEFTCTRL, "shift": KEY_LEFTSHIFT, "alt": KEY_LEFTALT,
+               "logo": KEY_LEFTMETA}
+# Teclas muertas (keysyms) para componer vocales con tilde, diéresis, etc.
+_DEAD_KEYSYMS = {"́": 0xFE51, "̀": 0xFE50, "̂": 0xFE52,
+                 "̃": 0xFE53, "̈": 0xFE57}
+# Signos que en distribuciones como "es" solo existen como tecla muerta + espacio.
+_SPACING_ACCENTS = {"^": "\u0302", "`": "\u0300", "´": "\u0301", "¨": "\u0308", "~": "\u0303"}
+_KEYPAD = {55, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 96, 98, 117, 121}
+_UNSUPPORTED_MSG = "does not support the virtual keyboard protocol"
+
+
+def _peso(combo: tuple[int, list[int]]) -> tuple[int, int, int]:
+    """Preferencia entre teclas que dan el mismo carácter: teclado principal antes
+    que teclas multimedia (códigos altos) o el numérico, y menos modificadores."""
+    code, mods = combo
+    return (code > 255, code in _KEYPAD, len(mods))
+
+
+def _layout_actual() -> tuple[str, str]:
+    """Distribución de teclado de la sesión: kxkbrc (KDE), si no la del sistema."""
+    try:
+        with open(os.path.expanduser("~/.config/kxkbrc")) as f:
+            txt = f.read()
+        lay = re.search(r"^LayoutList=([^,\n]+)", txt, re.M)
+        var = re.search(r"^VariantList=([^,\n]*)", txt, re.M)
+        if lay:
+            return lay.group(1).strip(), (var.group(1).strip() if var else "")
+    except OSError:
+        pass
+    try:
+        with open("/etc/X11/xorg.conf.d/00-keyboard.conf") as f:
+            txt = f.read()
+        lay = re.search(r'"XkbLayout"\s+"([^",]+)', txt)
+        if lay:
+            return lay.group(1), ""
+    except OSError:
+        pass
+    return "us", ""
+
+
+class _RuleNames(ctypes.Structure):
+    _fields_ = [(n, ctypes.c_char_p) for n in ("rules", "model", "layout", "variant", "options")]
+
+
+_KEYMAP_CACHE: dict[tuple[str, str], tuple[dict, dict]] = {}
+
+
+def _mapa_teclas(layout: str, variant: str) -> tuple[dict, dict]:
+    """(char → (keycode_evdev, [mods_evdev]), keysym_muerta → idem) para la
+    distribución. Prefiere la combinación con menos modificadores."""
+    clave = (layout, variant)
+    if clave in _KEYMAP_CACHE:
+        return _KEYMAP_CACHE[clave]
+    lib = ctypes.CDLL(ctypes.util.find_library("xkbcommon") or "libxkbcommon.so.0")
+    lib.xkb_context_new.restype = ctypes.c_void_p
+    lib.xkb_keymap_new_from_names.restype = ctypes.c_void_p
+    lib.xkb_keymap_new_from_names.argtypes = [ctypes.c_void_p, ctypes.POINTER(_RuleNames), ctypes.c_int]
+    for fn in ("xkb_keymap_min_keycode", "xkb_keymap_max_keycode"):
+        getattr(lib, fn).argtypes = [ctypes.c_void_p]
+    lib.xkb_keymap_num_levels_for_key.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32]
+    lib.xkb_keymap_key_get_syms_by_level.argtypes = [
+        ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint32,
+        ctypes.POINTER(ctypes.POINTER(ctypes.c_uint32))]
+    lib.xkb_keymap_key_get_mods_for_level.restype = ctypes.c_size_t
+    lib.xkb_keymap_key_get_mods_for_level.argtypes = [
+        ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint32,
+        ctypes.POINTER(ctypes.c_uint32), ctypes.c_size_t]
+    lib.xkb_keymap_mod_get_index.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+    lib.xkb_keymap_mod_get_index.restype = ctypes.c_uint32
+    lib.xkb_keysym_to_utf32.argtypes = [ctypes.c_uint32]
+    lib.xkb_keysym_to_utf32.restype = ctypes.c_uint32
+    lib.xkb_keymap_unref.argtypes = [ctypes.c_void_p]
+    lib.xkb_context_unref.argtypes = [ctypes.c_void_p]
+
+    ctx = lib.xkb_context_new(0)
+    names = _RuleNames(b"evdev", b"pc105", layout.encode(), variant.encode(), None)
+    km = lib.xkb_keymap_new_from_names(ctx, ctypes.byref(names), 0)
+    if not km:
+        lib.xkb_context_unref(ctx)
+        raise RuntimeError(f"libxkbcommon no conoce la distribución {layout}")
+    mod_evdev = {}
+    for nombre, codigo in (("Shift", KEY_LEFTSHIFT), ("Mod5", KEY_RIGHTALT),
+                           ("Control", KEY_LEFTCTRL), ("Mod1", KEY_LEFTALT)):
+        idx = lib.xkb_keymap_mod_get_index(km, nombre.encode())
+        if idx != 0xFFFFFFFF:
+            mod_evdev[1 << idx] = codigo
+    lock = lib.xkb_keymap_mod_get_index(km, b"Lock")
+    lock_bit = (1 << lock) if lock != 0xFFFFFFFF else 0
+
+    chars: dict[str, tuple[int, list[int]]] = {}
+    muertas: dict[int, tuple[int, list[int]]] = {}
+    syms = ctypes.POINTER(ctypes.c_uint32)()
+    masks = (ctypes.c_uint32 * 16)()
+    for kc in range(lib.xkb_keymap_min_keycode(km), lib.xkb_keymap_max_keycode(km) + 1):
+        for level in range(lib.xkb_keymap_num_levels_for_key(km, kc, 0)):
+            n = lib.xkb_keymap_key_get_syms_by_level(km, kc, 0, level, ctypes.byref(syms))
+            if n != 1:
+                continue
+            sym = syms[0]
+            nm = lib.xkb_keymap_key_get_mods_for_level(km, kc, 0, level, masks, 16)
+            opciones = []
+            for i in range(nm):
+                m = masks[i]
+                if m & lock_bit:
+                    continue
+                bits = [b for b in mod_evdev if m & b]
+                if sum(bits) != m:
+                    continue   # usa modificadores sin tecla física conocida
+                opciones.append([mod_evdev[b] for b in bits])
+            if not opciones:
+                continue
+            combo = (kc - 8, min(opciones, key=len))
+            destino, clave_sym = (muertas, sym) if sym in _DEAD_KEYSYMS.values() else (None, None)
+            if destino is not None:
+                if clave_sym not in destino or _peso(combo) < _peso(destino[clave_sym]):
+                    destino[clave_sym] = combo
+                continue
+            cp = lib.xkb_keysym_to_utf32(sym)
+            if not cp:
+                continue
+            ch = chr(cp)
+            if ch not in chars or _peso(combo) < _peso(chars[ch]):
+                chars[ch] = combo
+    lib.xkb_keymap_unref(km)
+    lib.xkb_context_unref(ctx)
+    chars.setdefault("\n", (28, []))
+    chars.setdefault("\t", (15, []))
+    for signo, marca in _SPACING_ACCENTS.items():
+        if signo not in chars and _DEAD_KEYSYMS[marca] in muertas and " " in chars:
+            chars[signo] = None  # se resuelve en _combos_para_texto: muerta + espacio
+    _KEYMAP_CACHE[clave] = (chars, muertas)
+    return chars, muertas
+
+
+def _combo_payload(code: int, mods: list[int]) -> bytes:
+    p = b""
+    for m in mods:
+        p += _event(EV_KEY, m, 1) + _SYN
+    p += _event(EV_KEY, code, 1) + _SYN + _event(EV_KEY, code, 0) + _SYN
+    for m in reversed(mods):
+        p += _event(EV_KEY, m, 0) + _SYN
+    return p
+
+
+def _combos_para_texto(text: str) -> tuple[list[tuple[int, list[int]]], list[str]]:
+    chars, muertas = _mapa_teclas(*_layout_actual())
+    combos, faltan = [], []
+    for ch in text.replace("\r\n", "\n"):
+        if chars.get(ch) is not None:
+            combos.append(chars[ch])
+            continue
+        if ch in chars:  # signo de tecla muerta: muerta + espacio
+            combos += [muertas[_DEAD_KEYSYMS[_SPACING_ACCENTS[ch]]], chars[" "]]
+            continue
+        base, *marcas = unicodedata.normalize("NFD", ch)
+        if len(marcas) == 1 and base in chars and _DEAD_KEYSYMS.get(marcas[0]) in muertas:
+            combos += [muertas[_DEAD_KEYSYMS[marcas[0]]], chars[base]]
+            continue
+        faltan.append(ch)
+    return combos, faltan
+
+
+def _uinput_combos(combos: list[tuple[int, list[int]]]) -> str:
+    for code, mods in combos:
+        if not _YD.send(_combo_payload(code, mods)):
+            return "no pude hablar con ydotoold (systemctl --user status ydotool)"
+        time.sleep(0.004)
+    return "ok"
+
+
+def _uinput_key(key: str) -> str:
+    """Tecla de la whitelist (formato "ctrl+shift+z", "F5", "super") por uinput."""
+    if key == "super":
+        return _uinput_combos([(KEY_LEFTMETA, [])])
+    *mods, final = key.split("+")
+    code = _EVDEV_KEYS.get(final)
+    if code is None:
+        chars, _ = _mapa_teclas(*_layout_actual())
+        if chars.get(final) is None:
+            return f"tecla desconocida en la distribución actual: {final}"
+        code = chars[final][0]
+    try:
+        return _uinput_combos([(code, [_EVDEV_MODS[m] for m in mods])])
+    except KeyError as e:
+        return f"modificador desconocido: {e}"
+
+
+def _uinput_text(text: str) -> str:
+    try:
+        combos, faltan = _combos_para_texto(text)
+    except (OSError, RuntimeError) as e:
+        return f"no pude cargar la distribución de teclado: {e}"
+    result = _uinput_combos(combos)
+    if result == "ok" and faltan:
+        print(f"teclado: sin tecla en la distribución para {''.join(sorted(set(faltan)))[:40]!r}",
+              file=sys.stderr)
+    return result
 
 
 # ─── Teclado (wtype) ──────────────────────────────────────────────────────────
@@ -438,7 +690,10 @@ def key_press(key: str) -> str:
     args = _KEY_COMMANDS.get(key)
     if args is None:
         return f"tecla no permitida: {key}"
-    return _wtype(args)
+    result = _wtype(args)
+    if _UNSUPPORTED_MSG in result:
+        return _uinput_key(key)
+    return result
 
 
 def type_text(text: str) -> str:
@@ -446,4 +701,7 @@ def type_text(text: str) -> str:
         return "texto vacío"
     if len(text) > 2000:
         return "texto demasiado largo (max 2000 chars)"
-    return _wtype([text])
+    result = _wtype([text])
+    if _UNSUPPORTED_MSG in result:
+        return _uinput_text(text)
+    return result

@@ -787,8 +787,10 @@ def _niri_run(args: list[str], timeout: int = 5) -> tuple[int, str, str]:
     return proc.returncode, proc.stdout or "", (proc.stderr or "").strip()
 
 
-def _process_running(comm: str) -> bool:
-    """True si hay un proceso vivo cuyo /proc/<pid>/comm sea exactamente `comm`."""
+def _process_running(comm: str, skip_arg: str | None = None) -> bool:
+    """True si hay un proceso vivo cuyo /proc/<pid>/comm sea exactamente `comm`.
+    Con `skip_arg` se ignoran los que lleven ese argumento (p. ej. un
+    `kwin_wayland --virtual` de pruebas no es la sesión del usuario)."""
     try:
         pids = [p for p in os.listdir("/proc") if p.isdigit()]
     except OSError:
@@ -796,8 +798,13 @@ def _process_running(comm: str) -> bool:
     for pid in pids:
         try:
             with open(f"/proc/{pid}/comm") as f:
-                if f.read().strip() == comm:
-                    return True
+                if f.read().strip() != comm:
+                    continue
+            if skip_arg:
+                with open(f"/proc/{pid}/cmdline", "rb") as f:
+                    if skip_arg.encode() in f.read().split(b"\0"):
+                        continue
+            return True
         except OSError:
             continue
     return False
@@ -810,7 +817,7 @@ def active_compositor() -> str:
     otra."""
     if "NIRI_SOCKET" in niri_socket_env():
         return "niri"
-    if _process_running("kwin_wayland") or _process_running("kwin_x11"):
+    if _process_running("kwin_wayland", skip_arg="--virtual") or _process_running("kwin_x11"):
         return "kde"
     if _process_running("cosmic-comp"):
         return "cosmic"
@@ -871,22 +878,32 @@ def niri_focus_player_window(player: str) -> str:
 
 
 def wtype_key(key: str) -> str:
-    """Envía una tecla al compositor vía wtype (zwp_virtual_keyboard_v1)."""
-    uid = os.getuid()
-    env = {
-        **os.environ,
-        "XDG_RUNTIME_DIR": f"/run/user/{uid}",
-        "WAYLAND_DISPLAY": "wayland-1",
-    }
+    """Envía una tecla al compositor vía wtype (zwp_virtual_keyboard_v1). KWin
+    no ofrece ese protocolo: ahí la tecla sale por ydotoold (input_control)."""
+    rc, stdout, stderr = _wayland_client_run("wtype", [key], 5)
+    if rc != 0:
+        err = (stderr or stdout or f"exit {rc}").strip()
+        import input_control  # perezoso, igual que en _cosmic_focus_output
+        if input_control._UNSUPPORTED_MSG in err:
+            return input_control._uinput_key(key)
+        return err[:200]
+    return "ok"
+
+
+def mpris_raise(player: str) -> str:
+    """org.mpris.MediaPlayer2.Raise: le pide al player que traiga su ventana al
+    frente. Es el reemplazo portable de `niri msg action focus-window`, porque
+    ni COSMIC ni Plasma tienen un cliente de consola para enfocar ventanas."""
     try:
         proc = subprocess.run(
-            ["wtype", key],
-            capture_output=True, text=True, timeout=5, env=env,
+            ["busctl", "--user", "call", f"org.mpris.MediaPlayer2.{player}",
+             "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2", "Raise"],
+            capture_output=True, text=True, timeout=5, env=_playerctl_env(),
         )
     except FileNotFoundError:
-        return "wtype no instalado (sudo pacman -S wtype)"
+        return "busctl no encontrado"
     except subprocess.TimeoutExpired:
-        return "timeout en wtype"
+        return "timeout en busctl"
     if proc.returncode != 0:
         return (proc.stderr or proc.stdout or f"exit {proc.returncode}").strip()[:200]
     return "ok"
@@ -896,7 +913,10 @@ def player_video_fullscreen(player: str) -> str:
     """Fullscreen del video (no de la ventana): enfoca la ventana del player
     y manda la tecla F (atajo estándar de YouTube/Twitch/mpv/Spotify desktop).
     """
-    result = niri_focus_player_window(player)
+    if active_compositor() == "niri":
+        result = niri_focus_player_window(player)
+    else:
+        result = mpris_raise(player)
     if result != "ok":
         return f"focus: {result}"
     time.sleep(0.15)
@@ -1413,7 +1433,15 @@ def _kde_outputs() -> tuple[list[dict], str | None]:
         name = info.get("name")
         if not name:
             continue
-        out.append({"name": name, "label": name, "on": bool(info.get("enabled"))})
+        item = {"name": name, "label": name, "on": bool(info.get("enabled"))}
+        # Geometría lógica (tamaño del modo / escala), para llevar el cursor al
+        # centro de un monitor. kscreen-doctor no expone marca ni modelo.
+        size, pos = info.get("size") or {}, info.get("pos") or {}
+        scale = float(info.get("scale") or 1) or 1.0
+        if item["on"] and size.get("width", -1) > 0:
+            item.update(x=int(pos.get("x", 0)), y=int(pos.get("y", 0)),
+                        width=int(size["width"] / scale), height=int(size["height"] / scale))
+        out.append(item)
     return out, None
 
 
@@ -1432,6 +1460,75 @@ def _kde_dpms(on: bool) -> str:
     return (stderr or stdout or f"exit {rc}")[:300]
 
 
+# Comandos de ventana en KWin: sus acciones son atajos globales con nombre que
+# se disparan por D-Bus (kglobalaccel), sin sintetizar teclas, así que funcionan
+# aunque se reasignen las combinaciones en Preferencias del sistema.
+_KDE_CMD_SHORTCUTS: dict[str, str] = {
+    "fullscreen-window":    "Window Fullscreen",
+    "close-window":         "Window Close",
+    "maximize-column":      "Window Maximize",
+    "focus-column-left":    "Switch Window Left",
+    "focus-column-right":   "Switch Window Right",
+    "focus-workspace-up":   "Switch One Desktop Up",
+    "focus-workspace-down": "Switch One Desktop Down",
+    "toggle-overview":      "Overview",
+}
+
+
+def _kde_focus_output(name: str) -> str:
+    """Hace activo un monitor (donde abren las ventanas nuevas) con la acción
+    nativa de KWin "Switch to Screen N". N es el orden de workspace.screens, que
+    sigue la prioridad de las salidas encendidas (1 = principal). No se lleva el
+    cursor con ydotool: bajo KWin el salto absoluto pierde eventos y en un
+    layout irregular el puntero choca con los bordes."""
+    rc, stdout, stderr = _kscreen_run(["-j"])
+    if rc != 0:
+        return (stderr or stdout or f"exit {rc}")[:300]
+    try:
+        outputs = json.loads(stdout).get("outputs", [])
+    except json.JSONDecodeError as e:
+        return f"JSON inválido: {e}"
+    target = next((o for o in outputs if o.get("name") == name), None)
+    if target is None or not target.get("connected"):
+        return f"monitor desconocido: {name}"
+    if not target.get("enabled"):
+        return f"{name} está apagada"
+    orden = sorted((o for o in outputs if o.get("enabled")),
+                   key=lambda o: o.get("priority") or 99)
+    index = [o["name"] for o in orden].index(name)
+    return _kde_shortcut(f"Switch to Screen {index}")
+
+
+def _kde_shortcut(shortcut: str) -> str:
+    try:
+        proc = subprocess.run(
+            ["busctl", "--user", "call", "org.kde.kglobalaccel", "/component/kwin",
+             "org.kde.kglobalaccel.Component", "invokeShortcut", "s", shortcut],
+            capture_output=True, text=True, timeout=5, env=_kde_session_env(),
+        )
+    except FileNotFoundError:
+        return "busctl no encontrado"
+    except subprocess.TimeoutExpired:
+        return "timeout en kglobalaccel"
+    if proc.returncode != 0:
+        return (proc.stderr or proc.stdout or f"exit {proc.returncode}").strip()[:300]
+    return "ok"
+
+
+def _kde_cmd(cmd: str, output: str | None = None) -> str:
+    if output:
+        result = _kde_focus_output(output)
+        if result != "ok" or cmd == "focus-monitor":
+            return result
+        time.sleep(0.15)
+    elif cmd == "focus-monitor":
+        return "falta output para focus-monitor"
+    shortcut = _KDE_CMD_SHORTCUTS.get(cmd)
+    if shortcut is None:
+        return f"comando no disponible en KDE Plasma: {cmd}"
+    return _kde_shortcut(shortcut)
+
+
 # ─── COSMIC (cosmic-randr + wlopm) ───────────────────────────────────────────
 # cosmic-comp no tiene IPC propio como niri ni D-Bus como KWin: se maneja con
 # los clientes Wayland que trae el escritorio.
@@ -1441,10 +1538,12 @@ def _kde_dpms(on: bool) -> str:
 # ventanas se reacomodan), mientras que wlopm apaga la alimentación dejando la
 # distribución intacta. Por eso cada una cubre una operación distinta.
 
-def _cosmic_session_env() -> dict:
-    """cosmic-randr y wlopm son clientes Wayland: necesitan WAYLAND_DISPLAY y
-    XDG_RUNTIME_DIR. El backend corre como servicio systemd y no los hereda de
-    la sesión gráfica — mismo problema que kscreen-doctor en KDE."""
+def _wayland_session_env() -> dict:
+    """cosmic-randr, wlopm y wtype son clientes Wayland: necesitan
+    WAYLAND_DISPLAY y XDG_RUNTIME_DIR. El backend corre como servicio systemd y
+    no los hereda de la sesión gráfica — mismo problema que kscreen-doctor en
+    KDE. No se fija "wayland-1" a mano: se toma el socket más reciente, que es
+    el de la sesión viva."""
     uid = os.getuid()
     runtime_dir = f"/run/user/{uid}"
     env = {**os.environ, "LC_ALL": "C", "XDG_RUNTIME_DIR": runtime_dir}
@@ -1469,7 +1568,7 @@ def _wayland_client_run(binary: str, args: list[str], timeout: int) -> tuple[int
     try:
         proc = subprocess.run(
             [binary, *args],
-            capture_output=True, text=True, timeout=timeout, env=_cosmic_session_env(),
+            capture_output=True, text=True, timeout=timeout, env=_wayland_session_env(),
         )
     except subprocess.TimeoutExpired:
         return -1, "", f"timeout consultando {binary}"
@@ -1482,39 +1581,116 @@ def _wayland_client_run(binary: str, args: list[str], timeout: int) -> tuple[int
 # infierno de parsear; el KDL sale limpio y estable.
 _COSMIC_OUTPUT_RE = re.compile(r'^output\s+"([^"]+)"\s+enabled=#(true|false)')
 _COSMIC_DESC_RE = re.compile(r'make="([^"]*)"\s+model="([^"]*)"')
+_COSMIC_POS_RE = re.compile(r'^position\s+(-?\d+)\s+(-?\d+)$')
+# Ojo: `adaptive_sync_support` NO matchea acá porque el patrón exige espacio.
+_COSMIC_ASYNC_RE = re.compile(r'^adaptive_sync\s+(\S+)$')
+_COSMIC_MODE_RE = re.compile(r'^mode\s+(\d+)\s+(\d+)\s+(\d+)\b')
 
 
 def _cosmic_outputs() -> tuple[list[dict], str | None]:
+    """Salidas con geometría. Además de nombre/etiqueta/estado devuelve el modo
+    actual y la posición, que en COSMIC hacen falta para dos cosas: reponer el
+    modo al reencender una pantalla (cosmic-comp no lo persiste) y ubicar el
+    centro de cada monitor para llevarle el cursor."""
     rc, stdout, stderr = _cosmic_run(["list", "--kdl"])
     if rc != 0:
         return [], (stderr or stdout or f"exit {rc}")[:300]
-    out = []
-    name = None
-    on = False
-    label = None
-    for line in stdout.splitlines():
-        m = _COSMIC_OUTPUT_RE.match(line.strip())
+    out: list[dict] = []
+    cur: dict | None = None
+    for raw in stdout.splitlines():
+        line = raw.strip()
+        m = _COSMIC_OUTPUT_RE.match(line)
         if m:
-            if name:
-                out.append({"name": name, "label": label or name, "on": on})
-            name, on, label = m.group(1), m.group(2) == "true", None
+            if cur:
+                out.append(cur)
+            cur = {"name": m.group(1), "label": None, "on": m.group(2) == "true"}
             continue
-        if name and label is None:
+        if cur is None:
+            continue
+        if cur["label"] is None:
             d = _COSMIC_DESC_RE.search(line)
             if d:
                 make, model = d.group(1).strip(), d.group(2).strip()
-                label = " ".join(p for p in (make, model) if p) or None
-    if name:
-        out.append({"name": name, "label": label or name, "on": on})
+                cur["label"] = " ".join(p for p in (make, model) if p) or None
+                continue
+        pos = _COSMIC_POS_RE.match(line)
+        if pos:
+            cur["x"], cur["y"] = int(pos.group(1)), int(pos.group(2))
+            continue
+        vrr = _COSMIC_ASYNC_RE.match(line)
+        if vrr:
+            cur["adaptive_sync"] = vrr.group(1).strip('"#')
+            continue
+        if "current=#true" in line:
+            mode = _COSMIC_MODE_RE.match(line)
+            if mode:
+                cur["width"] = int(mode.group(1))
+                cur["height"] = int(mode.group(2))
+                cur["refresh_mhz"] = int(mode.group(3))
+    if cur:
+        out.append(cur)
+    for o in out:
+        o["label"] = o["label"] or o["name"]
     out.sort(key=lambda o: o["name"])
     return out, None
 
 
+# cosmic-comp NO persiste la configuración de salidas: modo, refresco, VRR y
+# posición viven solo en su memoria. Por eso un `disable` + `enable` devolvía la
+# pantalla en su modo preferido, y apagar/prender un monitor desde el celular se
+# comía los 180 Hz y el FreeSync. Acá se recuerda lo último visto para reponerlo.
+_COSMIC_SAVED: dict[str, dict] = {}
+_COSMIC_GEOM_KEYS = ("width", "height", "refresh_mhz", "x", "y", "adaptive_sync")
+
+
+def _cosmic_restore_geometry(name: str) -> None:
+    """Reaplica el modo/refresco/VRR/posición recordados al reencender. Best
+    effort: si falla, la pantalla queda encendida igual, en su modo preferido."""
+    saved = _COSMIC_SAVED.pop(name, None)
+    if not saved or not saved.get("width"):
+        return
+    # cosmic-comp necesita un instante entre el enable y el modeset; sin la
+    # espera el `mode` sale con UnknownOutput.
+    time.sleep(0.8)
+    args = ["mode", name, str(saved["width"]), str(saved["height"])]
+    if saved.get("refresh_mhz"):
+        args += ["--refresh", f"{saved['refresh_mhz'] / 1000:.3f}"]
+    if saved.get("x") is not None:
+        args += ["--pos-x", str(saved["x"]), "--pos-y", str(saved.get("y", 0))]
+    vrr = saved.get("adaptive_sync")
+    if vrr and vrr != "false":
+        args += ["--adaptive-sync", vrr]
+    rc, stdout, stderr = _cosmic_run(args)
+    if rc != 0:
+        print(f"cosmic: no pude restaurar el modo de {name}: "
+              f"{(stderr or stdout or rc)}", file=sys.stderr)
+
+
 def _cosmic_set_output(name: str, on: bool) -> str:
+    outputs, err = _cosmic_outputs()
+    if err:
+        return err
+    target = next((o for o in outputs if o["name"] == name), None)
+    if target is None:
+        return f"monitor desconocido: {name}"
+    if not on:
+        encendidas = [o["name"] for o in outputs if o["on"]]
+        # cosmic-comp no admite quedarse sin ninguna salida: apagar la última
+        # deja el escritorio inalcanzable desde la propia PC. Para dejar el
+        # panel sin imagen sin sacarlo del layout está el DPMS (wlopm).
+        if encendidas == [name]:
+            return ("es la única pantalla encendida: usa DPMS para apagarle la "
+                    "imagen sin sacarla del escritorio")
+        if target.get("width"):
+            _COSMIC_SAVED[name] = {
+                k: target[k] for k in _COSMIC_GEOM_KEYS if k in target
+            }
     rc, stdout, stderr = _cosmic_run(["enable" if on else "disable", name])
-    if rc == 0:
-        return "ok"
-    return (stderr or stdout or f"exit {rc}")[:300]
+    if rc != 0:
+        return (stderr or stdout or f"exit {rc}")[:300]
+    if on:
+        _cosmic_restore_geometry(name)
+    return "ok"
 
 
 def _cosmic_dpms(on: bool) -> str:
@@ -1535,6 +1711,92 @@ def _cosmic_dpms(on: bool) -> str:
             errors.append(f"{target}: {(stderr or stdout or f'exit {rc}').strip()}")
     if errors:
         return "; ".join(errors)[:300]
+    return "ok"
+
+
+# ─── Comandos de ventana / foco en COSMIC ────────────────────────────────────
+# cosmic-comp expone zcosmic_toplevel_manager_v1, pero no hay cliente de consola
+# que lo hable: no existe equivalente a `niri msg action`. La vía practicable es
+# sintetizar los atajos por defecto del escritorio con wtype — el mismo camino
+# que ya usa el teclado remoto. Si se reasignan los atajos en Ajustes de COSMIC,
+# hay que actualizar este mapa. Los ids son los mismos que en niri para que la
+# app no tenga que saber en qué escritorio está.
+_COSMIC_CMD_KEYS: dict[str, list[str]] = {
+    "fullscreen-window":    ["-M", "logo", "-k", "F11", "-m", "logo"],
+    "close-window":         ["-M", "logo", "-k", "q", "-m", "logo"],
+    "maximize-column":      ["-M", "logo", "-k", "m", "-m", "logo"],
+    "focus-column-left":    ["-M", "logo", "-k", "Left", "-m", "logo"],
+    "focus-column-right":   ["-M", "logo", "-k", "Right", "-m", "logo"],
+    "focus-workspace-up":   ["-M", "logo", "-M", "ctrl", "-k", "Up",
+                             "-m", "ctrl", "-m", "logo"],
+    "focus-workspace-down": ["-M", "logo", "-M", "ctrl", "-k", "Down",
+                             "-m", "ctrl", "-m", "logo"],
+}
+
+# La vista de workspaces de COSMIC es un binario propio (cosmic-workspaces), no
+# una acción del compositor. Se guarda el proceso para que el segundo toque la
+# cierre en vez de abrir una segunda instancia.
+_COSMIC_OVERVIEW: dict[str, object] = {"proc": None}
+
+
+def _cosmic_toggle_overview() -> str:
+    proc = _COSMIC_OVERVIEW.get("proc")
+    if proc is not None and proc.poll() is None:
+        proc.terminate()
+        _COSMIC_OVERVIEW["proc"] = None
+        return "ok"
+    try:
+        _COSMIC_OVERVIEW["proc"] = subprocess.Popen(
+            ["cosmic-workspaces"], env=_wayland_session_env(),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except FileNotFoundError:
+        return "cosmic-workspaces no encontrado"
+    return "ok"
+
+
+def _cosmic_focus_output(name: str) -> str:
+    """En COSMIC la salida activa — donde abren las ventanas nuevas — es la que
+    tiene el puntero, y no hay acción tipo `focus-monitor`. Así que se lleva el
+    cursor al centro de esa pantalla. Asume escala 1: con escalado el espacio
+    absoluto de ydotool y el layout lógico dejan de coincidir."""
+    outputs, err = _cosmic_outputs()
+    if err:
+        return err
+    target = next((o for o in outputs if o["name"] == name), None)
+    if target is None:
+        return f"monitor desconocido: {name}"
+    if not target["on"]:
+        return f"{name} está apagada"
+    if not target.get("width"):
+        return f"no pude leer la geometría de {name}"
+    import input_control  # perezoso: el módulo solo hace falta para el puntero
+    cx = target.get("x", 0) + target["width"] // 2
+    cy = target.get("y", 0) + target["height"] // 2
+    return input_control.mouse_move_absolute(cx, cy)
+
+
+def _cosmic_cmd(cmd: str, output: str | None = None) -> str:
+    # Los atajos actúan sobre la pantalla activa, así que primero se mueve el
+    # foco (o sea, el cursor) si se pidió un monitor concreto.
+    if output:
+        result = _cosmic_focus_output(output)
+        if result != "ok":
+            return result
+        if cmd == "focus-monitor":
+            return "ok"
+        time.sleep(0.15)
+    elif cmd == "focus-monitor":
+        return "falta output para focus-monitor"
+    if cmd == "toggle-overview":
+        return _cosmic_toggle_overview()
+    keys = _COSMIC_CMD_KEYS.get(cmd)
+    if keys is None:
+        return f"comando no disponible en COSMIC: {cmd}"
+    rc, stdout, stderr = _wayland_client_run("wtype", keys, 5)
+    if rc != 0:
+        return (stderr or stdout or f"exit {rc}")[:300]
     return "ok"
 
 
@@ -1620,6 +1882,35 @@ def niri_cmd(cmd: str, output: str | None = None) -> str:
     if rc == 0:
         return "ok"
     return (stderr or stdout or f"exit {rc}")[:300]
+
+
+def wm_cmd(cmd: str, output: str | None = None) -> str:
+    """Comandos de ventana/foco/workspace, con los mismos ids en todos los
+    escritorios: la app manda 'fullscreen-window' y acá se traduce a la acción
+    de niri, al atajo global de KWin o al atajo de COSMIC según lo que esté
+    corriendo."""
+    comp = active_compositor()
+    if comp == "niri":
+        return niri_cmd(cmd, output)
+    if comp == "cosmic":
+        return _cosmic_cmd(cmd, output)
+    if comp == "kde":
+        return _kde_cmd(cmd, output)
+    return _NO_COMPOSITOR
+
+
+def wm_cmds() -> list[str]:
+    """Ids que soporta el compositor activo, para que la app muestre solo los
+    botones que van a funcionar (en COSMIC, por ejemplo, no hay 'media-workspace',
+    que era un spawn propio de la config de niri)."""
+    comp = active_compositor()
+    if comp == "niri":
+        return sorted(NIRI_CMD_MAP)
+    if comp == "cosmic":
+        return sorted([*_COSMIC_CMD_KEYS, "toggle-overview", "focus-monitor"])
+    if comp == "kde":
+        return sorted([*_KDE_CMD_SHORTCUTS, "focus-monitor"])
+    return []
 
 
 def audio_set_sink(sink: str) -> str:
@@ -1824,12 +2115,19 @@ def scene_apply(cfg: dict, name: str) -> str:
         if r != "ok":
             errors.append(f"on {o}: {r}")
     focus = spec.get("focus")
-    if focus and active_compositor() == "niri":
-        # "Fijar" un monitor es un concepto de tiling (niri); KDE Plasma no
-        # tiene equivalente, así que en esa sesión se omite sin error.
-        rc, _, stderr = _niri_run(["action", "focus-monitor", focus])
-        if rc != 0:
-            errors.append(f"focus {focus}: {(stderr or rc)}")
+    if focus:
+        # "Fijar" un monitor: en niri y KDE Plasma es una acción del compositor;
+        # en COSMIC se traduce a llevar el cursor ahí (la pantalla activa es la
+        # que tiene el puntero).
+        comp = active_compositor()
+        if comp == "niri":
+            rc, _, stderr = _niri_run(["action", "focus-monitor", focus])
+            if rc != 0:
+                errors.append(f"focus {focus}: {(stderr or rc)}")
+        elif comp in ("cosmic", "kde"):
+            result = (_cosmic_focus_output if comp == "cosmic" else _kde_focus_output)(focus)
+            if result != "ok":
+                errors.append(f"focus {focus}: {result}")
     sink = spec.get("sink")
     if sink:
         r = audio_set_sink(sink)
@@ -2377,7 +2675,8 @@ def main() -> None:
             niri_set_output=screen_set_output,
             niri_dpms=screen_dpms,
             active_compositor=active_compositor,
-            niri_cmd=niri_cmd,
+            niri_cmd=wm_cmd,
+            wm_cmds=wm_cmds,
             audio_sinks=audio_sinks,
             audio_default_sink=audio_default_sink,
             audio_set_sink=audio_set_sink,
