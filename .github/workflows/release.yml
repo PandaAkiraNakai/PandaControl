@@ -69,6 +69,10 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # El default 'tools platform-tools' falla: el paquete 'tools' ya no
+          # existe en el repo del SDK. Gradle baja platforms/build-tools solo.
+          packages: 'platform-tools'
 
       - name: Decode keystore
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/release.jks
