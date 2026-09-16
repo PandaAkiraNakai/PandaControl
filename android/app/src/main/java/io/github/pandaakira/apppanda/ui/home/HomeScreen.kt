@@ -46,6 +46,7 @@ import io.github.pandaakira.apppanda.ui.components.KeyValue
 import io.github.pandaakira.apppanda.ui.components.PandaCard
 import io.github.pandaakira.apppanda.ui.components.StatBar
 import io.github.pandaakira.apppanda.ui.components.UnlockCard
+import io.github.pandaakira.apppanda.ui.components.WakeCard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -128,6 +129,8 @@ fun HomeScreen(app: PandaApp, onGoSetup: () -> Unit) {
                     Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
                 }
             }
+            // Sin respuesta del PC: quizás está apagado, ofrecer encenderlo.
+            item { WakeCard(app = app) }
         }
 
         item {

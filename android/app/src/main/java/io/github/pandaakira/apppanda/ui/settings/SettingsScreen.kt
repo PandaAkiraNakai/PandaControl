@@ -57,6 +57,7 @@ import io.github.pandaakira.apppanda.PandaApp
 import io.github.pandaakira.apppanda.data.NotifCategory
 import io.github.pandaakira.apppanda.data.NotifGroup
 import io.github.pandaakira.apppanda.data.PandaApi
+import io.github.pandaakira.apppanda.data.WakeOnLan
 import io.github.pandaakira.apppanda.data.Profile
 import io.github.pandaakira.apppanda.service.AlertsService
 import io.github.pandaakira.apppanda.ui.components.PandaCard
@@ -210,6 +211,7 @@ private fun ProfileEditorCard(
     var port by remember(initial.id) { mutableStateOf("8890") }
     var token by remember(initial.id) { mutableStateOf(initial.token) }
     var tokenVisible by remember(initial.id) { mutableStateOf(false) }
+    var wolMac by remember(initial.id) { mutableStateOf(initial.wolMac) }
     var testResult by remember(initial.id) { mutableStateOf<String?>(null) }
     var testOk by remember(initial.id) { mutableStateOf<Boolean?>(null) }
     var busy by remember(initial.id) { mutableStateOf(false) }
@@ -269,6 +271,43 @@ private fun ProfileEditorCard(
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = wolMac, onValueChange = { wolMac = it.trim() },
+            label = { Text("MAC para encender (Wake-on-LAN)") },
+            placeholder = { Text("se detecta sola con el PC encendido") },
+            singleLine = true,
+            isError = wolMac.isNotBlank() && !WakeOnLan.isValidMac(wolMac),
+            trailingIcon = {
+                TextButton(
+                    onClick = {
+                        busy = true; testResult = null; testOk = null
+                        scope.launch {
+                            val api = PandaApi(computeBaseUrl(), token.trim())
+                            try {
+                                val info = withContext(Dispatchers.IO) { api.wolInfo() }
+                                val iface = info.interfaces.firstOrNull()
+                                if (iface != null) {
+                                    wolMac = iface.mac
+                                    testOk = true
+                                    testResult = "MAC de ${iface.name}: ${iface.mac}"
+                                } else {
+                                    testOk = false
+                                    testResult = "el PC no tiene tarjeta cableada"
+                                }
+                            } catch (e: Exception) {
+                                testOk = false
+                                testResult = "no se pudo detectar (¿PC apagado o backend viejo?)"
+                            } finally {
+                                api.close(); busy = false
+                            }
+                        }
+                    },
+                    enabled = !busy && host.isNotBlank(),
+                ) { Text("Detectar") }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(
                 onClick = {
@@ -298,10 +337,13 @@ private fun ProfileEditorCard(
                             name = name.trim().ifBlank { host.trim() },
                             baseUrl = computeBaseUrl(),
                             token = token.trim(),
+                            wolMac = wolMac.takeIf { WakeOnLan.isValidMac(it) }
+                                ?.let { WakeOnLan.normalizeMac(it) }.orEmpty(),
                         )
                     )
                 },
-                enabled = !busy && host.isNotBlank(),
+                enabled = !busy && host.isNotBlank() &&
+                    (wolMac.isBlank() || WakeOnLan.isValidMac(wolMac)),
                 modifier = Modifier.weight(1f),
             ) { Text("Guardar") }
         }

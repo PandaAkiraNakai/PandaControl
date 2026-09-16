@@ -31,6 +31,7 @@ import io.github.pandaakira.apppanda.ui.components.ConfirmDialog
 import io.github.pandaakira.apppanda.ui.components.PandaCard
 import io.github.pandaakira.apppanda.ui.components.ScreenHeader
 import io.github.pandaakira.apppanda.ui.components.UnlockCard
+import io.github.pandaakira.apppanda.ui.components.WakeCard
 import io.github.pandaakira.apppanda.ui.components.pandaDeco
 import io.github.pandaakira.apppanda.ui.components.rememberActionExecutor
 import kotlinx.coroutines.Dispatchers
@@ -76,6 +77,7 @@ fun PowerScreen(app: PandaApp) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         ScreenHeader("POWER :: actions", "confirmación 2-pasos requerida")
+        WakeCard(app = app)
         UnlockCard(app = app)
         options.forEach { opt ->
             Button(

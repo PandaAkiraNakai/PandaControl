@@ -26,8 +26,12 @@ data class Profile(
     val name: String,
     val baseUrl: String,
     val token: String = "",
+    /** MAC de la tarjeta cableada para encender el PC con Wake-on-LAN.
+     *  Vacía = el perfil no ofrece el botón Encender. */
+    val wolMac: String = "",
 ) {
     val isConfigured: Boolean get() = baseUrl.isNotBlank()
+    val canWake: Boolean get() = WakeOnLan.isValidMac(wolMac)
 
     companion object {
         fun newId(): String = UUID.randomUUID().toString()

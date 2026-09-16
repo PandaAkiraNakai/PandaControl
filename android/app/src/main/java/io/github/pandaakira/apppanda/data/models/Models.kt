@@ -215,6 +215,20 @@ data class SessionStateResponse(
 )
 
 @Serializable
+data class WolInterface(
+    val name: String = "",
+    val mac: String = "",
+    val up: Boolean = false,
+    val default: Boolean = false,
+)
+
+@Serializable
+data class WolInfoResponse(
+    val interfaces: List<WolInterface> = emptyList(),
+    val broadcasts: List<String> = emptyList(),
+)
+
+@Serializable
 data class TerminalResponse(
     val stdout: String = "",
     val stderr: String = "",
@@ -414,6 +428,7 @@ data class ActionResult(
     val app: String? = null,
     val appid: String? = null,
     val alias: String? = null,
+    val mac: String? = null,
     val chars: Int? = null,
 ) {
     val ok: Boolean get() = result.lowercase() in setOf("ok", "started")

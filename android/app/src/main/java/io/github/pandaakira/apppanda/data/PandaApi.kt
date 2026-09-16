@@ -8,6 +8,7 @@ import io.github.pandaakira.apppanda.data.models.InhibitResponse
 import io.github.pandaakira.apppanda.data.models.RunningGameResponse
 import io.github.pandaakira.apppanda.data.models.ScenesResponse
 import io.github.pandaakira.apppanda.data.models.TerminalResponse
+import io.github.pandaakira.apppanda.data.models.WolInfoResponse
 import io.github.pandaakira.apppanda.data.models.DiskResponse
 import io.github.pandaakira.apppanda.data.models.FileUploadResponse
 import io.github.pandaakira.apppanda.data.models.FilesDeleteReq
@@ -462,6 +463,13 @@ class PandaApi(
 
     suspend fun wakeOnLan(alias: String) =
         action("/api/v1/net/wake/$alias")
+
+    /** Interfaces cableadas y su MAC, para configurar el encendido de este PC. */
+    suspend fun wolInfo(): WolInfoResponse = client.get(url("/api/v1/net/wol")).body()
+
+    /** Pide a este PC que mande el magic packet a [mac] desde su LAN. */
+    suspend fun wakeRelay(mac: String) =
+        action("/api/v1/net/wake", body = mapOf("mac" to mac))
 
     suspend fun sudoDecision(rid: String, approved: Boolean) =
         action("/api/v1/sudo/$rid/decision", body = mapOf("approved" to approved))

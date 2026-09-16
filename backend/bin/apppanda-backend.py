@@ -1965,16 +1965,73 @@ def mpris_action(action: str, player: str) -> str:
     return (stderr or f"exit {rc}")[:200]
 
 
-def wol_send(target: str, cfg: dict) -> str:
+_MAC_RE = re.compile(r"^[0-9A-Fa-f]{2}([:.\-]?[0-9A-Fa-f]{2}){5}$")
+
+
+def _ipv4_broadcasts() -> list[str]:
+    """Broadcast dirigido de cada red IPv4 con salida real (sin docker/tailscale)."""
+    out = run(["ip", "-4", "-o", "addr", "show", "scope", "global"], timeout=3)
+    res = []
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) < 4 or parts[1].startswith(("docker", "br-", "veth", "tailscale", "virbr")):
+            continue
+        if "brd" in parts:
+            res.append(parts[parts.index("brd") + 1])
+    return res
+
+
+def wol_send(target: str, cfg: dict, broadcast: str = "") -> str:
+    """Manda el magic packet desde la LAN de este PC (sirve de relay para
+    encender a otro que está apagado). [target] es una MAC o un alias de
+    [net.wake]. Sin binarios externos: UDP broadcast a los puertos 9 y 7."""
+    import socket
     mapping = (cfg.get("net") or {}).get("wake") or {}
-    mac = mapping.get(target, target)
-    if not re.match(r"^[0-9A-Fa-f]{2}([:.\-][0-9A-Fa-f]{2}){5}$", mac):
+    mac = mapping.get(target, target).strip()
+    if not _MAC_RE.match(mac):
         return f"MAC inválida o alias no mapeado: {target}"
-    out = run(["wol", mac], timeout=5)
-    low = out.lower()
-    if "waking up" in low or "wake-up" in low or "magic packet" in low:
+    raw = bytes.fromhex(re.sub(r"[^0-9A-Fa-f]", "", mac))
+    packet = b"\xff" * 6 + raw * 16
+    dests = [broadcast.strip()] if broadcast.strip() else []
+    dests += _ipv4_broadcasts() + ["255.255.255.255"]
+    sent, errors = 0, []
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        for dest in dict.fromkeys(dests):
+            for port in (9, 7):
+                try:
+                    sock.sendto(packet, (dest, port))
+                    sent += 1
+                except OSError as e:
+                    errors.append(f"{dest}:{port} {e.strerror or e}")
+    if sent:
         return "ok"
-    return out.strip()[:200] or "ok"
+    return ("; ".join(errors) or "no hay red IPv4 para mandar el paquete")[:200]
+
+
+def wol_info() -> dict:
+    """Interfaces físicas con su MAC, para que la app configure el encendido
+    de este PC mientras está prendido. Marca la que lleva la ruta por defecto."""
+    default_dev = ""
+    route = run(["ip", "-4", "route", "show", "default"], timeout=3).split()
+    if "dev" in route:
+        default_dev = route[route.index("dev") + 1]
+    ifaces = []
+    for dev in sorted(os.listdir("/sys/class/net")):
+        base = Path("/sys/class/net") / dev
+        if not (base / "device").exists() or (base / "wireless").exists():
+            continue  # solo cableadas reales: WoL por wifi casi nunca funciona
+        try:
+            mac = (base / "address").read_text().strip()
+            operstate = (base / "operstate").read_text().strip()
+        except OSError:
+            continue
+        ifaces.append({
+            "name": dev, "mac": mac, "up": operstate == "up",
+            "default": dev == default_dev,
+        })
+    ifaces.sort(key=lambda i: (not i["default"], not i["up"], i["name"]))
+    return {"interfaces": ifaces, "broadcasts": _ipv4_broadcasts()}
 
 
 def steam_launch(appid: str, cfg: dict) -> str:
@@ -2815,6 +2872,7 @@ def main() -> None:
             steam_games=steam_games,
             steam_launch=steam_launch,
             wol_send=wol_send,
+            wol_info=wol_info,
             execute_power=execute_power,
             session_state=session_state,
             execute_kill=execute_kill,

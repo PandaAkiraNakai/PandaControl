@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.shareIn
@@ -107,7 +108,10 @@ class PandaRepository(
                 cfg.isConfigured -> listOf(Profile("", "PC", cfg.baseUrl, cfg.token))
                 else -> emptyList()
             }
-        }.distinctUntilChanged()
+        }.distinctUntilChanged { a, b ->
+            // La MAC de encendido no afecta al SSE: guardarla no reconecta.
+            a.map { it.copy(wolMac = "") } == b.map { it.copy(wolMac = "") }
+        }
 
     /** Source flow: una conexión SSE por PC, compartida entre todos los
      *  colectores (HomeScreen + AlertsService). Si nadie escucha por 5s, las
@@ -152,6 +156,23 @@ class PandaRepository(
             )
         }
 
+    private val wakeMacLearned = mutableSetOf<String>()
+
+    /** Guarda en el perfil la MAC cableada del PC mientras está encendido, para
+     *  poder encenderlo después con Wake-on-LAN sin configurar nada. Una vez por
+     *  perfil y sesión de la app; no pisa una MAC escrita a mano. */
+    private fun learnWakeMac(profileId: String, api: PandaApi) {
+        if (profileId.isBlank() || !synchronized(wakeMacLearned) { wakeMacLearned.add(profileId) }) return
+        scope.launch(Dispatchers.IO) {
+            val current = settings.profiles.first().firstOrNull { it.id == profileId } ?: return@launch
+            if (current.wolMac.isNotBlank()) return@launch
+            val info = runCatching { api.wolInfo() }.getOrNull() ?: return@launch
+            val mac = info.interfaces.firstOrNull()?.mac?.takeIf { WakeOnLan.isValidMac(it) } ?: return@launch
+            val latest = settings.profiles.first().firstOrNull { it.id == profileId } ?: return@launch
+            if (latest.wolMac.isBlank()) settings.upsertProfile(latest.copy(wolMac = mac))
+        }
+    }
+
     /** Mantiene abierto el SSE de un PC, reconectando con backoff. Solo el
      *  PC activo actualiza el estado de conexión que muestra la UI. */
     private suspend fun ProducerScope<ProfileEvent>.streamProfile(p: Profile) {
@@ -176,7 +197,8 @@ class PandaRepository(
                             _lastEventAt.value = System.currentTimeMillis()
                             _lastError.value = null
                         }
-                        if (evt.type != "hello") send(ProfileEvent(p, evt))
+                        if (evt.type == "hello") learnWakeMac(p.id, api)
+                        else send(ProfileEvent(p, evt))
                     }
                 } catch (e: CancellationException) {
                     // Cambió la lista de PCs o se cerró el flow: propagar, no tragar.

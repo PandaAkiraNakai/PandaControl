@@ -393,6 +393,8 @@ class _Handler(BaseHTTPRequestHandler):
             body = {"active": self.api.power_inhibit_state()}
         elif path == "/api/v1/session":
             body = self.api.session_state()
+        elif path == "/api/v1/net/wol":
+            body = self.api.wol_info()
         elif path == "/api/v1/screens":
             body = self._screens()
         elif path == "/api/v1/media/players":
@@ -732,6 +734,16 @@ class _Handler(BaseHTTPRequestHandler):
                 appid = path[len("/api/v1/games/"):-len("/launch")]
                 result = api.steam_launch(appid, api.ctx.cfg)
                 body = {"appid": appid, "result": result}
+            elif path == "/api/v1/net/wake":
+                # Relay de Wake-on-LAN: {mac, broadcast?} desde la LAN de este PC.
+                data = self._read_json_body()
+                mac = (data.get("mac") or "").strip()
+                if not mac:
+                    self._err(400, "body needs {mac}")
+                    self._audit(path, 400)
+                    return
+                result = api.wol_send(mac, api.ctx.cfg, (data.get("broadcast") or "").strip())
+                body = {"mac": mac, "result": result}
             elif path.startswith("/api/v1/net/wake/"):
                 alias = path[len("/api/v1/net/wake/"):]
                 result = api.wol_send(alias, api.ctx.cfg)
