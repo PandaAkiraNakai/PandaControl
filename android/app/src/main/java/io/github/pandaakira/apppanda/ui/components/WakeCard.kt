@@ -60,25 +60,23 @@ fun WakeCard(app: PandaApp, modifier: Modifier = Modifier) {
         busy = true; ok = null; status = "Enviando paquete…"
         scope.launch {
             val mac = WakeOnLan.normalizeMac(target.wolMac)
-            val routes = withContext(Dispatchers.IO) {
+            val (direct, relayed) = withContext(Dispatchers.IO) {
                 val relays = profiles.filter { it.id != target.id && it.isConfigured }
                     .map { relayPc -> async { if (relay(relayPc, mac)) relayPc.name.ifBlank { "PC" } else null } }
-                val direct = runCatching { WakeOnLan.sendDirect(context, mac) }.getOrDefault(0)
-                listOfNotNull(if (direct > 0) "celular (Wi-Fi)" else null) + relays.awaitAll().filterNotNull()
+                val d = runCatching { WakeOnLan.sendDirect(context, mac) }
+                    .getOrElse { WakeOnLan.DirectResult(emptyList(), listOf(it.message ?: "error")) }
+                d to relays.awaitAll().filterNotNull()
             }
-            status = if (routes.isEmpty()) {
-                "No hubo cómo mandar el paquete: el celular no está en Wi-Fi y ningún " +
-                    "otro PC respondió. Esperando igual por si llegó…"
-            } else {
-                "Paquete enviado vía ${routes.joinToString(", ")}. Esperando a $pcName…"
-            }
+            val routes = direct.sentVia.map { "celular ($it)" } + relayed
+            val detail = if (direct.sent) "" else " Directo falló: ${direct.errors.joinToString("; ")}."
+            val sentText = if (routes.isEmpty()) "No salió el paquete por ninguna vía.$detail"
+                           else "Paquete enviado vía ${routes.joinToString(", ")}.$detail"
             val up = waitForBackend(target) { s ->
-                status = "Paquete enviado vía ${routes.joinToString(", ").ifBlank { "—" }}. " +
-                    "Esperando a $pcName… ${s} s"
+                status = "$sentText Esperando a $pcName… $s s"
             }
             ok = up
-            status = if (up) "$pcName encendido y respondiendo."
-                     else "$pcName no respondió en $WAIT_BOOT_S s. Si estás fuera de casa, " +
+            status = if (up) "$sentText $pcName responde."
+                     else "$sentText $pcName no respondió en $WAIT_BOOT_S s. Si estás fuera de casa, " +
                           "hace falta otro PC encendido en la LAN para reenviar el paquete."
             busy = false
         }

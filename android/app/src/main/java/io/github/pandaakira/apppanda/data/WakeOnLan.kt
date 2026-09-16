@@ -32,36 +32,61 @@ object WakeOnLan {
         return ByteArray(6) { 0xFF.toByte() } + List(16) { raw }.flatten().toByteArray()
     }
 
-    /** Manda el magic packet por cada red local del celular. Devuelve cuántas
-     *  redes lo enviaron (0 = sin Wi-Fi/Ethernet o todo falló). */
+    /** Resultado del envío directo: por qué vía salió y, si nada salió, por qué. */
+    data class DirectResult(val sentVia: List<String>, val errors: List<String>) {
+        val sent: Boolean get() = sentVia.isNotEmpty()
+    }
+
+    /** Manda el magic packet por cada red local del celular. Primero atando el
+     *  socket a la red Wi-Fi/Ethernet; si la VPN no lo permite (Tailscale no
+     *  deja saltarse el túnel: EPERM), igual con un socket normal, que para
+     *  el broadcast de la LAN sale por el Wi-Fi mientras no se use exit node. */
     @Suppress("DEPRECATION")  // allNetworks: la alternativa por callback no aporta aquí
-    fun sendDirect(context: Context, mac: String): Int {
-        val cm = context.getSystemService(ConnectivityManager::class.java) ?: return 0
+    fun sendDirect(context: Context, mac: String): DirectResult {
+        val cm = context.getSystemService(ConnectivityManager::class.java)
+            ?: return DirectResult(emptyList(), listOf("sin ConnectivityManager"))
         val packet = magicPacket(mac)
-        var sent = 0
+        val via = mutableListOf<String>()
+        val errors = mutableListOf<String>()
+        val broadcasts = mutableListOf<InetAddress>()
+        var hasLan = false
         for (network in cm.allNetworks) {
             val caps = cm.getNetworkCapabilities(network) ?: continue
             if (caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) continue
             if (!caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
                 !caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) continue
-            val targets = mutableListOf<InetAddress>(InetAddress.getByName("255.255.255.255"))
-            cm.getLinkProperties(network)?.linkAddresses
+            hasLan = true
+            val targets = cm.getLinkProperties(network)?.linkAddresses
                 ?.filter { it.address is Inet4Address }
-                ?.forEach { targets.add(0, directedBroadcast(it.address as Inet4Address, it.prefixLength)) }
-            val ok = runCatching {
+                ?.map { directedBroadcast(it.address as Inet4Address, it.prefixLength) }
+                .orEmpty()
+            broadcasts += targets
+            runCatching {
                 DatagramSocket().use { socket ->
                     network.bindSocket(socket)
-                    socket.broadcast = true
-                    for (addr in targets.distinct()) {
-                        for (port in intArrayOf(9, 7)) {
-                            socket.send(DatagramPacket(packet, packet.size, addr, port))
-                        }
-                    }
+                    sendAll(socket, packet, targets)
                 }
-            }.isSuccess
-            if (ok) sent++
+            }.onSuccess { via += "Wi-Fi" }
+             .onFailure { errors += "Wi-Fi: ${it.message ?: it::class.simpleName}" }
         }
-        return sent
+        if (!hasLan) return DirectResult(emptyList(), listOf("el celular no está en Wi-Fi"))
+        if (via.isEmpty()) {
+            runCatching {
+                DatagramSocket().use { socket -> sendAll(socket, packet, broadcasts) }
+            }.onSuccess { via += "Wi-Fi (sin atar)" }
+             .onFailure { errors += "socket normal: ${it.message ?: it::class.simpleName}" }
+        }
+        return DirectResult(via, errors)
+    }
+
+    private fun sendAll(socket: DatagramSocket, packet: ByteArray, broadcasts: List<InetAddress>) {
+        socket.broadcast = true
+        val targets = (broadcasts + InetAddress.getByName("255.255.255.255")).distinct()
+        for (addr in targets) {
+            for (port in intArrayOf(9, 7)) {
+                socket.send(DatagramPacket(packet, packet.size, addr, port))
+            }
+        }
     }
 
     private fun directedBroadcast(addr: Inet4Address, prefix: Int): InetAddress {
