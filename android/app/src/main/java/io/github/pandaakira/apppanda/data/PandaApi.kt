@@ -60,6 +60,7 @@ import io.ktor.client.request.prepareGet
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.ContentType.Application
 import io.ktor.http.contentType
 import io.ktor.client.statement.HttpResponse
@@ -444,13 +445,15 @@ class PandaApi(
     suspend fun setDpms(on: Boolean) =
         action("/api/v1/screens/dpms/${if (on) "on" else "off"}")
 
-    suspend fun niriCmd(cmd: String, output: String? = null) =
-        action(
-            "/api/v1/niri/cmd/$cmd" +
-                if (output != null)
-                    "?output=${java.net.URLEncoder.encode(output, "UTF-8")}"
-                else "",
-        )
+    suspend fun wmCmd(cmd: String, output: String? = null): ActionResult {
+        val query = if (output != null)
+            "?output=${java.net.URLEncoder.encode(output, "UTF-8")}"
+        else ""
+        val resp = client.post(url("/api/v1/wm/cmd/$cmd$query"))
+        // Un backend anterior solo conoce la ruta vieja /niri/cmd (404 en /wm/cmd).
+        if (resp.status == HttpStatusCode.NotFound) return action("/api/v1/niri/cmd/$cmd$query")
+        return resp.body()
+    }
 
     suspend fun mediaAction(player: String, act: String) =
         action("/api/v1/media/$player/$act")

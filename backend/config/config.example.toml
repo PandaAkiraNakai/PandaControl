@@ -234,9 +234,11 @@ dir = "~/.config/apppanda-backend/temas"
 # ─── Escenas (presets de monitores + audio) ──────────────────────────────
 #
 # Cada [scenes.<name>] es un preset que la app aplica de un toque. Compone
-# acciones ya existentes: apaga/enciende outputs de niri, fija el monitor
-# enfocado y opcionalmente cambia el sink de audio por defecto. Los nombres
-# de output salen de `niri msg outputs` (p. ej. DP-1, HDMI-A-1).
+# acciones ya existentes: apaga/enciende outputs del compositor activo (niri,
+# KDE Plasma, COSMIC o Hyprland), fija el monitor enfocado y opcionalmente
+# cambia el sink de audio por defecto. Los nombres de output son los del
+# compositor (p. ej. DP-1, HDMI-A-1); en Hyprland salen de
+# `hyprctl monitors all`, en niri de `niri msg outputs`.
 #
 # [scenes.trabajo]
 # label = "Trabajo"

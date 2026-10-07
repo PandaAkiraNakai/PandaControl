@@ -42,59 +42,88 @@ import io.github.pandaakira.apppanda.ui.components.rememberActionExecutor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-private data class NiriCmd(
+private data class WmCmd(
     val id: String,
     val label: String,
     val icon: ImageVector,
     val color: Color,
 )
 
-private data class NiriGroup(
+private data class WmGroup(
     val label: String,
-    val cmds: List<NiriCmd>,
+    val cmds: List<WmCmd>,
 )
 
 /**
- * Tarjeta de comandos del WM niri (ventana, foco, vistas) con selector de
- * monitor objetivo. Antes vivía en el tab Control (MediaTabScreen); ahora se
- * embebe en la pantalla "Mouse/Teclado", entre el touchpad y el teclado, que
- * es donde se buscan al controlar el PC. Es autocontenida: trae su propio
- * ActionExecutor y muestra el resultado de la última acción debajo.
+ * Tarjeta de comandos de Hyprland (ventana, foco, workspaces, mover ventana y
+ * paneles de Noctalia) con selector de monitor objetivo. Vive en la pantalla
+ * "Mouse/Teclado", entre el touchpad y el teclado. Los botones siguen los
+ * atajos de la config (binds.lua) y el backend los traduce a la API Lua de
+ * Hyprland. Solo se dibujan los que el backend dice soportar (`commands` de
+ * /screens), así los paneles de Noctalia desaparecen si no está instalada.
+ * Es autocontenida: trae su propio ActionExecutor y muestra el resultado de la
+ * última acción debajo.
  */
 @Composable
-fun NiriCommandsCard(app: PandaApp) {
+fun HyprlandCommandsCard(app: PandaApp) {
     val api by app.repository.api.collectAsState()
     val exec = rememberActionExecutor { api }
 
-    // Monitor objetivo para los comandos de niri. null = monitor enfocado.
+    // Monitor objetivo de los comandos. null = monitor enfocado.
     var outputs by remember { mutableStateOf<List<NiriOutput>>(emptyList()) }
+    var supported by remember { mutableStateOf<Set<String>>(emptySet()) }
     var targetOutput by remember { mutableStateOf<String?>(null) }
     // Todos los monitores conectados (no solo los encendidos): si una
     // pantalla está en reposo igual debe poder elegirse como objetivo.
     io.github.pandaakira.apppanda.ui.components.PollingEffect(
         api = api, intervalMs = 30_000,
-        onResult = { outputs = it.outputs }, onError = {},
+        onResult = {
+            outputs = it.outputs
+            supported = it.commands.toSet()
+        },
+        onError = {},
     ) { it.screens() }
 
+    val c = LocalPandaColors.current
     val groups = listOf(
-        NiriGroup("ventana", listOf(
-            NiriCmd("fullscreen-window", "Fullscreen", PandaIcons.fullscreen,   LocalPandaColors.current.magenta),
-            NiriCmd("maximize-column",   "Maximizar",  PandaIcons.aspectRatio,  LocalPandaColors.current.orange),
-            NiriCmd("close-window",      "Cerrar",     PandaIcons.close,        MaterialTheme.colorScheme.error),
+        WmGroup("ventana", listOf(
+            WmCmd("fullscreen-window", "Fullscreen", PandaIcons.fullscreen,       c.magenta),
+            WmCmd("maximize-window",   "Maximizar",  PandaIcons.aspectRatio,      c.orange),
+            WmCmd("toggle-floating",   "Flotante",   PandaIcons.pictureInPicture, c.cyan),
+            WmCmd("toggle-split",      "Dividir",    PandaIcons.verticalSplit,    c.cyan),
+            WmCmd("pin-window",        "Fijar",      PandaIcons.pushPin,          c.yellow),
+            WmCmd("close-window",      "Cerrar",     PandaIcons.close,            MaterialTheme.colorScheme.error),
         )),
-        NiriGroup("foco · columnas y workspaces", listOf(
-            NiriCmd("focus-column-left",    "Col. ←", PandaIcons.chevronLeft,       LocalPandaColors.current.cyan),
-            NiriCmd("focus-column-right",   "Col. →", PandaIcons.chevronRight,      LocalPandaColors.current.cyan),
-            NiriCmd("focus-workspace-up",   "WS ↑",   PandaIcons.keyboardArrowUp,   LocalPandaColors.current.yellow),
-            NiriCmd("focus-workspace-down", "WS ↓",   PandaIcons.keyboardArrowDown, LocalPandaColors.current.yellow),
+        WmGroup("foco", listOf(
+            WmCmd("focus-left",   "←",         PandaIcons.chevronLeft,       c.cyan),
+            WmCmd("focus-up",     "↑",         PandaIcons.keyboardArrowUp,   c.cyan),
+            WmCmd("focus-right",  "→",         PandaIcons.chevronRight,      c.cyan),
+            WmCmd("focus-down",   "↓",         PandaIcons.keyboardArrowDown, c.cyan),
+            WmCmd("cycle-window", "Siguiente", PandaIcons.swapHoriz,         c.cyan),
         )),
-        NiriGroup("vistas", listOf(
-            NiriCmd("toggle-overview", "Overview", PandaIcons.gridView, LocalPandaColors.current.cyan),
-            NiriCmd("media-workspace", "Media WS", PandaIcons.tv,       LocalPandaColors.current.green),
+        WmGroup("workspaces del monitor", listOf(
+            WmCmd("workspace-prev",  "WS ←",       PandaIcons.chevronLeft,  c.yellow),
+            WmCmd("workspace-next",  "WS →",       PandaIcons.chevronRight, c.yellow),
+            WmCmd("workspace-empty", "WS vacío",   PandaIcons.add,          c.yellow),
+            WmCmd("toggle-special",  "Scratchpad", PandaIcons.inventory2,    c.green),
+        )),
+        WmGroup("mover ventana", listOf(
+            WmCmd("move-workspace-prev", "A WS ←",       PandaIcons.chevronLeft,    c.orange),
+            WmCmd("move-workspace-next", "A WS →",       PandaIcons.chevronRight,   c.orange),
+            WmCmd("move-to-special",     "A scratchpad", PandaIcons.inventory2,      c.green),
+            WmCmd("move-monitor-next",   "Otro monitor", PandaIcons.desktopWindows, c.magenta),
+        )),
+        WmGroup("noctalia", listOf(
+            WmCmd("window-switcher", "Ventanas", PandaIcons.gridView, c.cyan),
+            WmCmd("launcher",        "Launcher", PandaIcons.apps,     c.green),
+            WmCmd("control-center",  "Panel",    PandaIcons.tune,     c.magenta),
         )),
     )
+        // Con un backend viejo `commands` llega vacío: se muestran todos.
+        .map { g -> g.copy(cmds = g.cmds.filter { supported.isEmpty() || it.id in supported }) }
+        .filter { it.cmds.isNotEmpty() }
 
-    PandaCard(title = "COMANDOS :: niri", accent = LocalPandaColors.current.cyan) {
+    PandaCard(title = "COMANDOS :: hyprland", accent = c.cyan) {
         Text(
             "atajos del WM · toca para disparar",
             style = MaterialTheme.typography.bodySmall,
@@ -105,9 +134,9 @@ fun NiriCommandsCard(app: PandaApp) {
         if (outputs.isNotEmpty()) {
             Spacer(Modifier.height(12.dp))
             Text(
-                "monitor objetivo · fija foco y cursor",
+                "monitor objetivo · fija el foco ahí",
                 style = MaterialTheme.typography.labelSmall,
-                color = LocalPandaColors.current.cyan,
+                color = c.cyan,
             )
             Spacer(Modifier.height(6.dp))
             Row(
@@ -128,12 +157,11 @@ fun NiriCommandsCard(app: PandaApp) {
                         selected = targetOutput == o.name,
                         enabled = !exec.busy,
                     ) {
-                        // Fija el monitor al instante: enfoca ese output (y
-                        // con warp-mouse-to-focus el cursor se va ahí), así
+                        // Fija el monitor al instante: enfoca ese output, así
                         // las apps que lances después abren en esa pantalla.
                         targetOutput = o.name
                         exec.run("Foco → $name") {
-                            it.niriCmd("focus-monitor", o.name)
+                            it.wmCmd("focus-monitor", o.name)
                         }
                     }
                 }
@@ -148,7 +176,7 @@ fun NiriCommandsCard(app: PandaApp) {
             Text(
                 group.label,
                 style = MaterialTheme.typography.labelSmall,
-                color = LocalPandaColors.current.cyan,
+                color = c.cyan,
             )
             Spacer(Modifier.height(6.dp))
             group.cmds.chunked(3).forEach { row ->
@@ -156,13 +184,13 @@ fun NiriCommandsCard(app: PandaApp) {
                     Modifier.fillMaxWidth().padding(bottom = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    row.forEach { c ->
+                    row.forEach { cmd ->
                         CmdButton(
-                            cmd = c,
+                            cmd = cmd,
                             enabled = !exec.busy && api != null,
                             modifier = Modifier.weight(1f),
                         ) {
-                            exec.run(c.label) { it.niriCmd(c.id, targetOutput) }
+                            exec.run(cmd.label) { it.wmCmd(cmd.id, targetOutput) }
                         }
                     }
                     repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
@@ -211,7 +239,7 @@ private fun MonitorPill(
 
 @Composable
 private fun CmdButton(
-    cmd: NiriCmd,
+    cmd: WmCmd,
     enabled: Boolean,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,

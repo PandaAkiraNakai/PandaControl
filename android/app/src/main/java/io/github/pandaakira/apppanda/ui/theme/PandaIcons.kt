@@ -181,6 +181,26 @@ object PandaIcons {
         @Composable @ReadOnlyComposable get() = pick(
             Icons.Outlined.VisibilityOff, Icons.Filled.VisibilityOff,
             Icons.Rounded.VisibilityOff, Icons.Sharp.VisibilityOff)
+    val desktopWindows: ImageVector
+        @Composable @ReadOnlyComposable get() = pick(
+            Icons.Outlined.DesktopWindows, Icons.Filled.DesktopWindows,
+            Icons.Rounded.DesktopWindows, Icons.Sharp.DesktopWindows)
+    val pictureInPicture: ImageVector
+        @Composable @ReadOnlyComposable get() = pick(
+            Icons.Outlined.PictureInPictureAlt, Icons.Filled.PictureInPictureAlt,
+            Icons.Rounded.PictureInPictureAlt, Icons.Sharp.PictureInPictureAlt)
+    val pushPin: ImageVector
+        @Composable @ReadOnlyComposable get() = pick(
+            Icons.Outlined.PushPin, Icons.Filled.PushPin,
+            Icons.Rounded.PushPin, Icons.Sharp.PushPin)
+    val swapHoriz: ImageVector
+        @Composable @ReadOnlyComposable get() = pick(
+            Icons.Outlined.SwapHoriz, Icons.Filled.SwapHoriz,
+            Icons.Rounded.SwapHoriz, Icons.Sharp.SwapHoriz)
+    val verticalSplit: ImageVector
+        @Composable @ReadOnlyComposable get() = pick(
+            Icons.Outlined.VerticalSplit, Icons.Filled.VerticalSplit,
+            Icons.Rounded.VerticalSplit, Icons.Sharp.VerticalSplit)
 }
 
 /** Convierte el string del tema ("outlined"/"filled"/...) a [IconStyle]. */

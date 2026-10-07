@@ -41,7 +41,7 @@ PC; si no, no existe para nadie más.
 |---|---|
 | **Status** | CPU, RAM, disco, red, temperaturas, GPUs y estado SMART en vivo. |
 | **Trends** | Gráficas históricas 1h / 6h / 24h, dibujadas nativamente en Canvas. |
-| **Media** | Control MPRIS (play/pausa, seek ±15s, fullscreen del video), **volumen maestro + por aplicación + silenciar** y **mute/volumen del micrófono** (sliders, vía `pactl`), cambiar el sink de audio, prender/apagar pantallas (DPMS), **escenas** (presets que combinan outputs + foco + audio de un toque), lanzar apps GUI, **lanzar y cerrar juegos de Steam** (con detección del juego en curso) y comandos del WM `niri` desde una whitelist estricta. |
+| **Media** | Control MPRIS (play/pausa, seek ±15s, fullscreen del video), **volumen maestro + por aplicación + silenciar** y **mute/volumen del micrófono** (sliders, vía `pactl`), cambiar el sink de audio, prender/apagar pantallas (DPMS), **escenas** (presets que combinan outputs + foco + audio de un toque), lanzar apps GUI, **lanzar y cerrar juegos de Steam** (con detección del juego en curso) y comandos del WM (Hyprland; también niri, KDE y COSMIC) desde una whitelist estricta. |
 | **Control** | Mouse y teclado remotos: un **touchpad** que mueve el cursor por deltas, clic izquierdo/medio/derecho, scroll de dos dedos y swipe horizontal de dos dedos para navegar atrás/adelante, teclas especiales y atajos (Esc, Tab, flechas, Ctrl+C/V/Z, Alt+Tab, etc.), escritura de texto libre y **portapapeles bidireccional** (traer del PC / enviar al PC, vía `wl-clipboard`). Mouse vía `ydotool`, teclado vía `wtype`. |
 | **Sistema** | Apagar / reiniciar / suspender / bloquear (con confirmación), **desbloquear** con huella (también inicia sesión si el PC quedó en la pantalla de login tras encender o reiniciar), **inhibir la suspensión** (útil mientras descarga algo), una **mini terminal** opt-in (`bash -lc`, sin sudo), listar y matar procesos, gestionar servicios (start/stop/restart), ver logs de `journalctl`, revisar y aplicar actualizaciones (`checkupdates`), ver vecinos de la LAN y consultar tus VPS por SSH. |
 | **Archivos** | Gestor completo de los directorios que compartas: navegar subcarpetas (con breadcrumb), descargar al celular, subir a la carpeta actual, crear carpeta, renombrar, borrar (archivos y carpetas, con confirmación) y abrir cualquier archivo/carpeta en el PC con su app por defecto (`xdg-open`). Anti path-traversal: todo queda confinado al `shared_dir`. |
@@ -387,10 +387,17 @@ POST /api/v1/terminal/run          {cmd}     ([terminal].enabled, sin sudo)
 POST /api/v1/clipboard             {text: "..."}      (escribe al portapapeles)
 POST /api/v1/screens/{output}/{on|off}
 POST /api/v1/screens/dpms/{on|off}
-POST /api/v1/niri/cmd/{cmd}[?output=NAME]
-     (whitelist: fullscreen-window, close-window, maximize-column,
-      focus-column-{left|right}, focus-workspace-{up|down},
-      toggle-overview, media-workspace)
+POST /api/v1/wm/cmd/{cmd}[?output=NAME]       (alias viejo: /api/v1/niri/cmd/…)
+     (whitelist según el compositor; GET /api/v1/screens trae en `commands`
+      los ids que soporta el activo. Hyprland: fullscreen-window,
+      maximize-window, toggle-floating, toggle-split, pin-window,
+      close-window, focus-{left|right|up|down}, cycle-window,
+      workspace-{prev|next|empty}, toggle-special,
+      move-workspace-{prev|next}, move-to-special, move-monitor-next,
+      focus-monitor y, con Noctalia, window-switcher, launcher,
+      control-center. niri: fullscreen-window, close-window,
+      maximize-column, focus-column-{left|right},
+      focus-workspace-{up|down}, toggle-overview, media-workspace)
 POST /api/v1/media/{player}/{play-pause|next|previous|seek:+15|seek:-15|fullscreen|vol-up|vol-down}
 POST /api/v1/apps/{name}/launch
 POST /api/v1/games/{appid}/launch

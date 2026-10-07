@@ -378,13 +378,101 @@ def cursor_jiggle(pulsos: int = 8, amplitud: int = 70) -> str:
     return "ok"
 
 
+# Hyprland cambia tema y tamaño del cursor en caliente con `hyprctl setcursor`,
+# sin tocar archivos. El tema/tamaño de reposo se leen de las variables
+# HYPRCURSOR_*/XCURSOR_* que declara la config (hl.env(...) en Lua o
+# `env = ...` en hyprland.conf); el backend corre como servicio y no las hereda.
+_HYPR_CONFIG_DIR = os.path.expanduser(
+    os.environ.get("HYPR_CONFIG_DIR", "~/.config/hypr")
+)
+_HYPR_CURSOR_RE = re.compile(
+    r"""(HYPRCURSOR|XCURSOR)_(THEME|SIZE)["']?\s*[,=]\s*["']?([\w.+-]+)"""
+)
+
+
+def _hypr_env() -> dict | None:
+    """Entorno con HYPRLAND_INSTANCE_SIGNATURE del Hyprland vivo, o None si no
+    hay ninguno corriendo."""
+    runtime_dir = f"/run/user/{os.getuid()}"
+    base = os.path.join(runtime_dir, "hypr")
+    try:
+        sigs = [d for d in os.listdir(base)
+                if os.path.exists(os.path.join(base, d, ".socket.sock"))]
+    except OSError:
+        return None
+    if not sigs:
+        return None
+    sig = max(sigs, key=lambda d: os.stat(os.path.join(base, d)).st_mtime)
+    return {**os.environ, "XDG_RUNTIME_DIR": runtime_dir,
+            "HYPRLAND_INSTANCE_SIGNATURE": sig}
+
+
+def _hypr_cursor_cfg() -> tuple[str, int]:
+    """(tema, tamaño) de reposo según la config de Hyprland. HYPRCURSOR_* manda
+    sobre XCURSOR_*; sin nada declarado cae al tema por defecto y 24 px."""
+    found: dict[tuple[str, str], str] = {}
+    for path in sorted(glob.glob(os.path.join(_HYPR_CONFIG_DIR, "**", "*"),
+                                 recursive=True)):
+        if not path.endswith((".lua", ".conf")):
+            continue
+        try:
+            with open(path, encoding="utf-8") as f:
+                for line in f:
+                    if line.lstrip().startswith(("--", "#")):
+                        continue
+                    for m in _HYPR_CURSOR_RE.finditer(line):
+                        found.setdefault((m.group(1), m.group(2)), m.group(3))
+        except OSError:
+            continue
+    theme = found.get(("HYPRCURSOR", "THEME")) or found.get(("XCURSOR", "THEME")) or "default"
+    size = found.get(("HYPRCURSOR", "SIZE")) or found.get(("XCURSOR", "SIZE")) or "24"
+    try:
+        return theme, int(size)
+    except ValueError:
+        return theme, 24
+
+
+def _hypr_setcursor(env: dict, theme: str, size: int) -> bool:
+    try:
+        proc = subprocess.run(["hyprctl", "setcursor", theme, str(size)],
+                              capture_output=True, text=True, timeout=3, env=env)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return proc.returncode == 0 and proc.stdout.strip() == "ok"
+
+
+def _hypr_cursor_highlight(env: dict, big: int, seconds: float) -> str:
+    theme, normal = _hypr_cursor_cfg()
+    with _CURSOR_LOCK:
+        _CURSOR_STATE["gen"] += 1
+        my_gen = _CURSOR_STATE["gen"]
+    if not _hypr_setcursor(env, theme, big):
+        return cursor_jiggle()
+    _cursor_nudge()
+
+    def _revert() -> None:
+        time.sleep(seconds)
+        with _CURSOR_LOCK:
+            if _CURSOR_STATE["gen"] != my_gen:
+                return  # una pulsación más nueva se hará cargo
+        _hypr_setcursor(env, theme, normal)
+        _cursor_nudge()
+
+    threading.Thread(target=_revert, daemon=True, name="cursor-revert").start()
+    return "ok"
+
+
 def cursor_highlight(big: int = 72, seconds: float = 2.0) -> str:
-    """Agranda el cursor de niri a `big` px durante `seconds` y lo devuelve a su
-    tamaño normal. Pensado para ubicar el puntero en la tele. Si se pulsa de
-    nuevo mientras está grande, extiende la ventana en vez de encoger antes."""
+    """Agranda el cursor a `big` px durante `seconds` y lo devuelve a su tamaño
+    normal. Pensado para ubicar el puntero en la tele. Si se pulsa de nuevo
+    mientras está grande, extiende la ventana en vez de encoger antes. Hyprland
+    va por `hyprctl setcursor`; niri, editando xcursor-size en su config."""
+    env = _hypr_env()
+    if env is not None:
+        return _hypr_cursor_highlight(env, big, seconds)
     found = _find_cursor_cfg()
     if found is None:
-        # Sin config de niri (COSMIC, Plasma) no hay tamaño que cambiar en
+        # Sin Hyprland ni config de niri (COSMIC, Plasma) no hay tamaño que cambiar en
         # caliente: se sacude el puntero, que cumple el mismo propósito.
         return cursor_jiggle()
     path, cur = found

@@ -539,6 +539,7 @@ fun DisplaysScreen(app: PandaApp) {
             "kde" -> "plasma"
             "niri" -> "niri"
             "cosmic" -> "cosmic"
+            "hyprland" -> "hyprland"
             else -> "?"
         }
         item { ScreenHeader("DISPLAYS :: $compositorLabel", "tap output = toggle on/off") }

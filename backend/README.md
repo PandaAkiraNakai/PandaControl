@@ -25,7 +25,7 @@ públicos.
 | `GET /api/v1/metrics?range=1h\|6h\|24h` | histórico SQLite |
 | `GET /api/v1/audio/sinks` | pactl, sinks + default + `master` (volumen % / mute) |
 | `GET /api/v1/clipboard` | texto del portapapeles (wl-paste) |
-| `GET /api/v1/screens` | outputs del compositor activo (niri / KDE / COSMIC) |
+| `GET /api/v1/screens` | outputs del compositor activo (niri / KDE / COSMIC / Hyprland) y `commands` que soporta |
 | `GET /api/v1/media/players` + `/{player}/status` | playerctl/MPRIS |
 | `GET /api/v1/net/neighbors` | ip neigh + gateway |
 | `GET /api/v1/vps` + `/{alias}/summary` | SSH BatchMode |
@@ -47,6 +47,7 @@ backend sirve sin reconfigurar nada aunque cambies de sesión:
 | niri | `niri msg output` | `niri msg action power-{on,off}-monitors` |
 | KDE Plasma | `kscreen-doctor` | `kscreen-doctor --dpms` |
 | COSMIC | `cosmic-randr` | `wlopm` (`zwlr_output_power_manager_v1`) |
+| Hyprland | `hl.monitor{…}` (Lua) / `hyprctl -j monitors all` | `dpms on/off` vía `hl.dsp.exec_raw` |
 
 En COSMIC hacen falta dos binarios porque `cosmic-randr` no expone DPMS:
 `disable` saca el output del layout y reacomoda las ventanas, mientras que
@@ -54,10 +55,23 @@ En COSMIC hacen falta dos binarios porque `cosmic-randr` no expone DPMS:
 recorre los outputs habilitados — pedirle power-on a uno deshabilitado no lo
 devuelve al layout.
 
-Gotcha común a KDE y COSMIC: sus clientes hablan Wayland/D-Bus y el backend
-corre como servicio systemd, que **no** hereda `WAYLAND_DISPLAY` ni
-`DBUS_SESSION_BUS_ADDRESS` de la sesión gráfica. `_kde_session_env()` y
-`_cosmic_session_env()` las arman a mano desde `/run/user/<uid>`.
+Gotcha de Hyprland con **config en Lua**: las mutaciones (`dispatch`, `keyword`)
+NO funcionan en texto plano (falla con *"keyword can't work with non-legacy
+parsers. Use eval."*); hay que ir por el intérprete Lua. Las consultas sí siguen
+en texto (`hyprctl -j monitors all`). Por eso el backend usa
+`hl.dispatch(hl.dsp.…)` para los dispatchers (dpms, foco, ventanas, workspaces)
+y `hl.monitor{ output, disabled }` para prender/apagar un output (recuerda el
+modo previo, así `disabled=false` lo reactiva tal cual). Ojo: `hl.dsp.*` solo
+construye el dispatcher (sin `hl.dispatch` no pasa nada y hyprctl igual dice
+"ok"), y `hl.dsp.exec_raw` es el `execr` clásico (lanzar un programa), no un
+dispatcher crudo.
+
+Gotcha común a KDE, COSMIC y Hyprland: sus clientes hablan Wayland/D-Bus y el
+backend corre como servicio systemd, que **no** hereda `WAYLAND_DISPLAY`,
+`DBUS_SESSION_BUS_ADDRESS` ni `HYPRLAND_INSTANCE_SIGNATURE` de la sesión gráfica.
+`_kde_session_env()`, `_cosmic_session_env()` y `hypr_env()` las arman a mano
+desde `/run/user/<uid>` (la firma de Hyprland se descubre del socket vivo en
+`/run/user/<uid>/hypr/<sig>/`).
 
 ## Módulo Control (mouse + teclado)
 

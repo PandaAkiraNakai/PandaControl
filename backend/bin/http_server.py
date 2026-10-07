@@ -642,8 +642,10 @@ class _Handler(BaseHTTPRequestHandler):
                     return
                 result = api.clipboard_set(text)
                 body = {"chars": len(text), "result": result}
-            elif path.startswith("/api/v1/niri/cmd/"):
-                cmd = path[len("/api/v1/niri/cmd/"):]
+            elif path.startswith(("/api/v1/wm/cmd/", "/api/v1/niri/cmd/")):
+                # /wm/cmd es la ruta actual (vale para cualquier compositor);
+                # /niri/cmd queda por compatibilidad con apps anteriores.
+                cmd = path.split("/cmd/", 1)[1]
                 output = self._parse_qs().get("output") or None
                 result = api.niri_cmd(cmd, output)
                 body = {"cmd": cmd, "output": output, "result": result}

@@ -821,12 +821,14 @@ def _process_running(comm: str, skip_arg: str | None = None) -> bool:
 
 
 def active_compositor() -> str:
-    """'niri', 'kde', 'cosmic' o 'unknown'. Se resuelve en cada llamada (no se
-    cachea) porque el usuario alterna de sesión (niri <-> Plasma <-> COSMIC)
-    sin reiniciar el backend, y este puede quedar corriendo de una sesión a
-    otra."""
+    """'niri', 'kde', 'cosmic', 'hyprland' o 'unknown'. Se resuelve en cada
+    llamada (no se cachea) porque el usuario alterna de sesión (niri <-> Plasma
+    <-> COSMIC <-> Hyprland) sin reiniciar el backend, y este puede quedar
+    corriendo de una sesión a otra."""
     if "NIRI_SOCKET" in niri_socket_env():
         return "niri"
+    if _process_running("Hyprland"):
+        return "hyprland"
     if _process_running("kwin_wayland", skip_arg="--virtual") or _process_running("kwin_x11"):
         return "kde"
     if _process_running("cosmic-comp"):
@@ -1810,12 +1812,272 @@ def _cosmic_cmd(cmd: str, output: str | None = None) -> str:
     return "ok"
 
 
-# ─── Pantallas (dispatch niri / KDE / COSMIC) ────────────────────────────────
+# ─── Hyprland (hyprctl + API Lua hl.*) ───────────────────────────────────────
+# Hyprland con config en Lua enruta las MUTACIONES por su intérprete Lua: los
+# `hyprctl dispatch`/`keyword` clásicos fallan ("keyword can't work with
+# non-legacy parsers. Use eval."). Las CONSULTAS siguen en texto plano
+# (`hyprctl -j monitors all`), pero para actuar se usa la API Lua:
+#   - dispatchers (dpms, foco, ventanas, workspaces) -> hl.dispatch(hl.dsp.<...>).
+#     OJO: `hl.dsp.*` solo CONSTRUYE el dispatcher; sin hl.dispatch() no pasa
+#     nada y hyprctl igual responde "ok". Y `hl.dsp.exec_raw` NO es un
+#     dispatcher crudo: es el `execr` clásico (lanzar un programa sin reglas).
+#   - prender/apagar un output (equivalente a `keyword monitor`) -> hl.monitor{...}.
+# El backend corre como servicio systemd sin HYPRLAND_INSTANCE_SIGNATURE; se
+# descubre del socket vivo en $XDG_RUNTIME_DIR/hypr/<sig>/ (igual que niri).
+
+def hypr_env() -> dict:
+    uid = os.getuid()
+    runtime_dir = f"/run/user/{uid}"
+    env = {**os.environ, "LC_ALL": "C", "XDG_RUNTIME_DIR": runtime_dir}
+    base = Path(runtime_dir) / "hypr"
+    try:
+        instances = sorted(
+            (d for d in base.iterdir() if (d / ".socket.sock").exists()),
+            key=lambda d: d.stat().st_mtime, reverse=True,
+        )
+    except OSError:
+        instances = []
+    if instances:
+        env["HYPRLAND_INSTANCE_SIGNATURE"] = instances[0].name
+    return env
+
+
+def _hypr_run(args: list[str], timeout: int = 5) -> tuple[int, str, str]:
+    env = hypr_env()
+    if "HYPRLAND_INSTANCE_SIGNATURE" not in env:
+        return -1, "", "no encontré socket de Hyprland (¿está corriendo?)"
+    try:
+        proc = subprocess.run(
+            ["hyprctl", *args],
+            capture_output=True, text=True, timeout=timeout, env=env,
+        )
+    except subprocess.TimeoutExpired:
+        return -1, "", "timeout consultando hyprctl"
+    except FileNotFoundError:
+        return -1, "", "hyprctl no encontrado"
+    return proc.returncode, proc.stdout or "", (proc.stderr or "").strip()
+
+
+def _hypr_eval(lua: str, timeout: int = 5) -> tuple[int, str, str]:
+    """Ejecuta una línea Lua con `hyprctl eval`. En éxito hyprctl responde 'ok';
+    ante un error de Lua devuelve el mensaje del intérprete con exit 0 igual, así
+    que cualquier salida distinta de 'ok' se trata como fallo."""
+    rc, stdout, stderr = _hypr_run(["eval", lua], timeout)
+    if rc != 0:
+        return rc, stdout, (stderr or stdout)
+    out = (stdout or "").strip()
+    if out.lower() == "ok":
+        return 0, out, ""
+    # Los errores de dispatchers llegan como 'warning: =[C]:-1: Bad workspace';
+    # a la app le sirve solo el mensaje.
+    out = re.sub(r"^(error|warning|info):\s*(=\[C\]:-?\d+:\s*)?", "", out)
+    return 1, stdout, (out or stderr or "error de hyprctl eval")
+
+
+def _lua_str(s: str) -> str:
+    """Literal de string Lua. Solo se usa con nombres de monitor ya validados
+    contra `hyprctl monitors`, pero se escapa igual por si acaso."""
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _hypr_dispatch(dsp: str) -> str:
+    """Ejecuta un dispatcher de la API Lua, p. ej. 'hl.dsp.window.close()'. La
+    expresión sale de la whitelist del backend, nunca de texto del cliente.
+    Hyprland devuelve el error en texto ('warning: Bad workspace', 'error: …'),
+    que _hypr_eval ya trata como fallo."""
+    rc, _stdout, stderr = _hypr_eval(f"hl.dispatch({dsp})")
+    if rc == 0:
+        return "ok"
+    return (stderr or f"exit {rc}")[:300]
+
+
+def _hypr_outputs() -> tuple[list[dict], str | None]:
+    rc, stdout, stderr = _hypr_run(["-j", "monitors", "all"])
+    if rc != 0:
+        return [], (stderr or stdout or f"exit {rc}")[:300]
+    try:
+        data = json.loads(stdout)
+    except json.JSONDecodeError as e:
+        return [], f"JSON inválido: {e}"
+    out = []
+    for info in sorted(data, key=lambda m: m.get("name") or ""):
+        name = info.get("name")
+        if not name:
+            continue
+        make = (info.get("make") or "").strip()
+        model = (info.get("model") or "").strip()
+        label = " ".join(p for p in (make, model) if p) or name
+        on = not info.get("disabled", False)
+        item = {"name": name, "label": label, "on": on}
+        # Geometría lógica (tamaño del modo / escala), para llevar el cursor al
+        # centro de un monitor en escenas y foco, igual que en KDE/COSMIC.
+        scale = float(info.get("scale") or 1) or 1.0
+        w, h = int(info.get("width") or 0), int(info.get("height") or 0)
+        if on and w:
+            item.update(x=int(info.get("x", 0)), y=int(info.get("y", 0)),
+                        width=int(w / scale), height=int(h / scale))
+        out.append(item)
+    return out, None
+
+
+# Geometría (modo + posición + escala) guardada antes de apagar un output, para
+# reponerla tal cual al reencenderlo. Sin esto, `disabled = false` deja que
+# Hyprland reposicione en automático y se pierde el layout del usuario (el
+# monitor reaparecía pegado al borde derecho en vez de su sitio). Mismo patrón
+# que `_COSMIC_SAVED`: vive en memoria, así que un reinicio del backend entre el
+# apagado y el encendido cae al reposicionado automático (aceptable y raro).
+_HYPR_SAVED: dict[str, dict] = {}
+
+
+def _hypr_geometry(name: str) -> dict | None:
+    """Modo/posición/escala actuales de `name` en la sintaxis que acepta
+    hl.monitor (mode "WxH@R", position "XxY", scale número), o None si no se
+    puede leer (output apagado o inexistente)."""
+    rc, stdout, _ = _hypr_run(["-j", "monitors", "all"])
+    if rc != 0:
+        return None
+    try:
+        data = json.loads(stdout)
+    except json.JSONDecodeError:
+        return None
+    info = next((m for m in data if m.get("name") == name), None)
+    if not info or info.get("disabled") or not info.get("width"):
+        return None
+    return {
+        "mode": f'{int(info["width"])}x{int(info["height"])}'
+                f'@{float(info.get("refreshRate") or 0):.5f}',
+        "position": f'{int(info.get("x", 0))}x{int(info.get("y", 0))}',
+        "scale": info.get("scale") or 1,
+    }
+
+
+def _hypr_set_output(name: str, on: bool) -> str:
+    outputs, err = _hypr_outputs()
+    if err:
+        return err
+    target = next((o for o in outputs if o["name"] == name), None)
+    if target is None:
+        return f"monitor desconocido: {name}"
+    if not on:
+        encendidas = [o["name"] for o in outputs if o["on"]]
+        # Como en COSMIC: apagar la última salida deja el escritorio inalcanzable
+        # desde la propia PC. Para dejar el panel sin imagen sin sacarlo del
+        # layout está el DPMS.
+        if encendidas == [name]:
+            return ("es la única pantalla encendida: usa DPMS para apagarle la "
+                    "imagen sin sacarla del escritorio")
+        # Guardamos la geometría antes de apagar, para reponerla intacta luego.
+        geo = _hypr_geometry(name)
+        if geo:
+            _HYPR_SAVED[name] = geo
+        lua = f'hl.monitor({{ output = "{name}", disabled = true }})'
+    else:
+        # Al reencender restauramos modo/posición/escala guardados; así el
+        # monitor vuelve a su sitio en vez de que Hyprland lo reubique solo. Sin
+        # geometría guardada (p. ej. tras reiniciar el backend) cae a
+        # `disabled = false`, que al menos lo reactiva con su config declarada.
+        saved = _HYPR_SAVED.pop(name, None)
+        if saved:
+            # disabled=false va junto con la geometría: fijar solo mode/pos/scale
+            # NO reactiva un output apagado (se queda disabled); hace falta pedir
+            # explícitamente disabled=false en la misma llamada.
+            lua = (f'hl.monitor({{ output = "{name}", mode = "{saved["mode"]}", '
+                   f'position = "{saved["position"]}", scale = "{saved["scale"]}", '
+                   f'disabled = false }})')
+        else:
+            lua = f'hl.monitor({{ output = "{name}", disabled = false }})'
+    rc, _stdout, stderr = _hypr_eval(lua)
+    if rc == 0:
+        return "ok"
+    return (stderr or f"exit {rc}")[:300]
+
+
+def _hypr_dpms(on: bool) -> str:
+    return _hypr_dispatch(f'hl.dsp.dpms({{ action = "{"on" if on else "off"}" }})')
+
+
+# Comandos de ventana/foco/workspace de Hyprland -> dispatcher de la API Lua.
+# Siguen los atajos de la config (binds.lua): 'Maximizar' es el fullscreen modo
+# 1 (respeta la barra) y el modo 0 es pantalla completa real; los workspaces
+# son relativos al monitor (m-1/m+1) y 'emptym' salta al primero vacío de ese
+# monitor. Los ids viejos de niri (focus-column-*, focus-workspace-*,
+# maximize-column) quedan como alias para versiones anteriores de la app.
+_HYPR_CMD_MAP: dict[str, str] = {
+    # ventana
+    "fullscreen-window":   "hl.dsp.window.fullscreen()",
+    "maximize-window":     "hl.dsp.window.fullscreen({ mode = 1 })",
+    "toggle-floating":     'hl.dsp.window.float({ action = "toggle" })',
+    "toggle-split":        'hl.dsp.layout("togglesplit")',
+    "pin-window":          "hl.dsp.window.pin()",
+    "close-window":        "hl.dsp.window.close()",
+    # foco
+    "focus-left":          'hl.dsp.focus({ direction = "left" })',
+    "focus-right":         'hl.dsp.focus({ direction = "right" })',
+    "focus-up":            'hl.dsp.focus({ direction = "up" })',
+    "focus-down":          'hl.dsp.focus({ direction = "down" })',
+    "cycle-window":        "hl.dsp.window.cycle_next()",
+    # workspaces del monitor
+    "workspace-prev":      'hl.dsp.focus({ workspace = "m-1" })',
+    "workspace-next":      'hl.dsp.focus({ workspace = "m+1" })',
+    "workspace-empty":     'hl.dsp.focus({ workspace = "emptym" })',
+    "toggle-special":      "hl.dsp.workspace.toggle_special()",
+    # mover la ventana activa
+    "move-workspace-prev": 'hl.dsp.window.move({ workspace = "m-1" })',
+    "move-workspace-next": 'hl.dsp.window.move({ workspace = "m+1" })',
+    "move-to-special":     'hl.dsp.window.move({ workspace = "special" })',
+    "move-monitor-next":   'hl.dsp.window.move({ monitor = "+1" })',
+    # alias de la app anterior (ids de niri)
+    "maximize-column":     "hl.dsp.window.fullscreen({ mode = 1 })",
+    "focus-column-left":   'hl.dsp.focus({ direction = "left" })',
+    "focus-column-right":  'hl.dsp.focus({ direction = "right" })',
+    "focus-workspace-up":  'hl.dsp.focus({ workspace = "m-1" })',
+    "focus-workspace-down": 'hl.dsp.focus({ workspace = "m+1" })',
+}
+
+# Paneles de Noctalia (la shell de la torre y el laptop). Se lanzan con el exec
+# de Hyprland para que hereden el entorno de la sesión gráfica; solo se ofrecen
+# si `noctalia` está instalado.
+_HYPR_NOCTALIA_CMDS: dict[str, str] = {
+    "window-switcher": "noctalia msg window-switcher",
+    "launcher":        "noctalia msg panel-toggle launcher",
+    "control-center":  "noctalia msg panel-toggle control-center",
+}
+
+
+def _hypr_cmd(cmd: str, output: str | None = None) -> str:
+    # Los dispatchers actúan sobre el monitor/ventana enfocado, así que si se
+    # pidió un monitor concreto se enfoca primero (como en niri).
+    if output:
+        valid = {o["name"] for o in _hypr_outputs()[0]}
+        if output not in valid:
+            return f"monitor desconocido: {output}"
+        result = _hypr_dispatch(f"hl.dsp.focus({{ monitor = {_lua_str(output)} }})")
+        if result != "ok" or cmd == "focus-monitor":
+            return result
+        time.sleep(0.15)
+    elif cmd == "focus-monitor":
+        return "falta output para focus-monitor"
+    dsp = _HYPR_CMD_MAP.get(cmd)
+    if dsp is None and cmd in _HYPR_NOCTALIA_CMDS and shutil.which("noctalia"):
+        dsp = f'hl.dsp.exec_cmd("{_HYPR_NOCTALIA_CMDS[cmd]}")'
+    if dsp is None:
+        return f"comando no disponible en Hyprland: {cmd}"
+    return _hypr_dispatch(dsp)
+
+
+def _hypr_cmd_keys() -> list[str]:
+    keys = [*_HYPR_CMD_MAP, "focus-monitor"]
+    if shutil.which("noctalia"):
+        keys += list(_HYPR_NOCTALIA_CMDS)
+    return keys
+
+
+# ─── Pantallas (dispatch niri / KDE / COSMIC / Hyprland) ──────────────────────
 # Punto único que usa el resto del backend para listar/prender/apagar
 # monitores. Elige backend según el compositor activo en este momento, así
-# la misma app funciona en niri, Plasma o COSMIC sin reconfigurar nada.
+# la misma app funciona en niri, Plasma, COSMIC o Hyprland sin reconfigurar nada.
 
-_NO_COMPOSITOR = "no se detectó niri, KDE Plasma ni COSMIC corriendo"
+_NO_COMPOSITOR = "no se detectó niri, KDE Plasma, COSMIC ni Hyprland corriendo"
 
 
 def screen_outputs() -> tuple[list[dict], str | None]:
@@ -1826,6 +2088,8 @@ def screen_outputs() -> tuple[list[dict], str | None]:
         return _niri_outputs()
     if comp == "cosmic":
         return _cosmic_outputs()
+    if comp == "hyprland":
+        return _hypr_outputs()
     return [], _NO_COMPOSITOR
 
 
@@ -1837,6 +2101,8 @@ def screen_set_output(name: str, on: bool) -> str:
         return _niri_set_output(name, on)
     if comp == "cosmic":
         return _cosmic_set_output(name, on)
+    if comp == "hyprland":
+        return _hypr_set_output(name, on)
     return _NO_COMPOSITOR
 
 
@@ -1848,6 +2114,8 @@ def screen_dpms(on: bool) -> str:
         return _niri_dpms(on)
     if comp == "cosmic":
         return _cosmic_dpms(on)
+    if comp == "hyprland":
+        return _hypr_dpms(on)
     return _NO_COMPOSITOR
 
 
@@ -1906,6 +2174,8 @@ def wm_cmd(cmd: str, output: str | None = None) -> str:
         return _cosmic_cmd(cmd, output)
     if comp == "kde":
         return _kde_cmd(cmd, output)
+    if comp == "hyprland":
+        return _hypr_cmd(cmd, output)
     return _NO_COMPOSITOR
 
 
@@ -1920,6 +2190,8 @@ def wm_cmds() -> list[str]:
         return sorted([*_COSMIC_CMD_KEYS, "toggle-overview", "focus-monitor"])
     if comp == "kde":
         return sorted([*_KDE_CMD_SHORTCUTS, "focus-monitor"])
+    if comp == "hyprland":
+        return sorted(_hypr_cmd_keys())
     return []
 
 
@@ -2183,14 +2455,18 @@ def scene_apply(cfg: dict, name: str) -> str:
             errors.append(f"on {o}: {r}")
     focus = spec.get("focus")
     if focus:
-        # "Fijar" un monitor: en niri y KDE Plasma es una acción del compositor;
-        # en COSMIC se traduce a llevar el cursor ahí (la pantalla activa es la
-        # que tiene el puntero).
+        # "Fijar" un monitor: en niri, KDE Plasma y Hyprland es una acción del
+        # compositor; en COSMIC se traduce a llevar el cursor ahí (la pantalla
+        # activa es la que tiene el puntero).
         comp = active_compositor()
         if comp == "niri":
             rc, _, stderr = _niri_run(["action", "focus-monitor", focus])
             if rc != 0:
                 errors.append(f"focus {focus}: {(stderr or rc)}")
+        elif comp == "hyprland":
+            result = _hypr_dispatch(f"hl.dsp.focus({{ monitor = {_lua_str(focus)} }})")
+            if result != "ok":
+                errors.append(f"focus {focus}: {result}")
         elif comp in ("cosmic", "kde"):
             result = (_cosmic_focus_output if comp == "cosmic" else _kde_focus_output)(focus)
             if result != "ok":

@@ -251,6 +251,9 @@ data class ScreensResponse(
     val outputs: List<NiriOutput>,
     val error: String? = null,
     val compositor: String? = null,
+    // Ids de comandos de ventana que soporta el escritorio activo (backend
+    // nuevo). Vacío con un backend viejo: la app muestra todos los botones.
+    val commands: List<String> = emptyList(),
 )
 
 @Serializable

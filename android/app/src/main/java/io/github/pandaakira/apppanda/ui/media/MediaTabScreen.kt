@@ -44,7 +44,7 @@ fun MediaTabScreen(app: PandaApp, onNavigate: (String) -> Unit) {
             PandaIcons.bolt, LocalPandaColors.current.magenta),
         MediaEntry("input", "Mouse/Teclado", "touchpad · clics · atajos · comandos",
             PandaIcons.mouse, LocalPandaColors.current.green),
-        MediaEntry("displays", "Pantallas", "niri outputs · DPMS",
+        MediaEntry("displays", "Pantallas", "monitores · DPMS",
             PandaIcons.tv, LocalPandaColors.current.cyan),
         MediaEntry("apps", "Apps", "lanzar GUI vía systemd-run",
             PandaIcons.apps, LocalPandaColors.current.cyan),
@@ -62,7 +62,7 @@ fun MediaTabScreen(app: PandaApp, onNavigate: (String) -> Unit) {
         Spacer(Modifier.height(8.dp))
 
         // Grid 2 columnas de tiles (manual). 5 entradas → 2 filas + media fila.
-        // Los comandos del WM (niri) se movieron a "Mouse/Teclado" (tile input).
+        // Los comandos del WM (Hyprland) viven en "Mouse/Teclado" (tile input).
         tiles.chunked(2).forEach { row ->
             Row(
                 Modifier.fillMaxWidth(),
