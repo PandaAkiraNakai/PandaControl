@@ -55,6 +55,12 @@ install -m 0644 -o root -g root \
     "$SRC_DIR/bin/input_control.py" \
     /usr/local/bin/input_control.py
 
+# 2g. Módulos del daemon (apppanda-backend.py se dividió en panda_*.py)
+for mod in "$SRC_DIR"/bin/panda_*.py; do
+    echo "==> Installing /usr/local/bin/$(basename "$mod")"
+    install -m 0644 -o root -g root "$mod" "/usr/local/bin/$(basename "$mod")"
+done
+
 # 2d. sudo-app-askpass binary (reemplazo de SUDO_ASKPASS)
 echo "==> Installing /usr/local/bin/sudo-app-askpass"
 install -m 0755 -o root -g root \

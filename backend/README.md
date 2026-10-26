@@ -127,10 +127,25 @@ imposible salir del directorio compartido (anti path-traversal y anti-symlink).
 |---|---|---|---|
 | `/usr/local/bin/apppanda-backend` | root:root | 0755 | El daemon |
 | `/usr/local/bin/http_server_panda.py` | root:root | 0644 | Módulo HTTP (symlink: `http_server.py`) |
+| `/usr/local/bin/panda_*.py` | root:root | 0644 | Módulos del daemon: `core` (config, audit), `metrics`, `media` (audio, MPRIS, portapapeles), `screens` (compositores, escenas), `system` (red, VPS, Steam, terminal, íconos), `power` (inhibir, caffeine) |
 | `/etc/apppanda-backend/config.toml` | $USER:$USER | 0400 | Tokens + bind + monitor + opcional vps/apps/etc |
 | `/etc/systemd/system/apppanda-backend.service` | root:root | 0644 | Unit |
 | `/var/lib/apppanda-backend/metrics.db` | $USER:$USER | 0600 | SQLite WAL del histórico |
+| `/var/lib/apppanda-backend/caffeine.json` | $USER:$USER | 0644 | Hora de apagado de caffeine (solo con temporizador activo) |
 | `/var/log/apppanda-backend/audit.log` | $USER:$USER | 0640 + `chattr +a` | Audit JSONL append-only |
+
+## Tests
+
+Solo stdlib (`unittest`), sin tocar el escritorio ni la red:
+
+```bash
+cd backend && python3 -m unittest discover -s . -p 'test_*.py' -t .
+```
+
+Cubren que los módulos `panda_*.py` importen y expongan todo lo que usa
+`main()`, el temporizador de caffeine (persistencia y restauración) y el
+servidor HTTP real con una API falsa (auth, validación, rutas de caffeine e
+íconos).
 
 ## Instalar
 
