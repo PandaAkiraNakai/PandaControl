@@ -2426,6 +2426,129 @@ def power_inhibit_state() -> bool:
         return _INHIBITOR is not None and _INHIBITOR.poll() is None
 
 
+# ─── Caffeine (inhibidor de idle, con temporizador) ───────────────────────────
+# Si corre Noctalia se usa SU caffeine (`noctalia msg caffeine-*`), así el
+# widget de la barra y la app muestran lo mismo. Sin Noctalia, un
+# `systemd-inhibit --what=idle` propio. El estado se lee de logind
+# (ListInhibitors): refleja también lo que se active/apague desde el PC.
+
+_CAFFEINE_LOCK = threading.Lock()
+_CAFFEINE_UNTIL: float | None = None          # apagado automático (epoch)
+_CAFFEINE_TIMER: threading.Timer | None = None
+_CAFFEINE_PROC: subprocess.Popen | None = None  # solo sin Noctalia
+_CAFFEINE_MAX_MIN = 24 * 60
+
+
+def _noctalia_msg(*args: str) -> tuple[int, str]:
+    if not shutil.which("noctalia"):
+        return 127, "noctalia no instalado"
+    try:
+        proc = subprocess.run(
+            ["noctalia", "msg", *args], capture_output=True, text=True,
+            timeout=5, env=_kde_session_env(),
+        )
+    except subprocess.TimeoutExpired:
+        return 1, "timeout hablando con noctalia"
+    return proc.returncode, (proc.stdout or proc.stderr or "").strip()
+
+
+def _caffeine_backend() -> str:
+    return "noctalia" if _noctalia_msg("status")[0] == 0 else "systemd"
+
+
+def _idle_inhibitors() -> list[tuple[str, str, str]]:
+    """(who, why, mode) de los inhibidores de idle de este usuario."""
+    try:
+        proc = subprocess.run(
+            ["busctl", "--json=short", "call", "org.freedesktop.login1",
+             "/org/freedesktop/login1", "org.freedesktop.login1.Manager",
+             "ListInhibitors"],
+            capture_output=True, text=True, timeout=5,
+        )
+        rows = json.loads(proc.stdout)["data"][0]
+    except (subprocess.TimeoutExpired, FileNotFoundError, ValueError, KeyError, IndexError):
+        return []
+    uid = os.getuid()
+    return [(who, why, mode) for what, who, why, mode, r_uid, _pid in rows
+            if "idle" in what.split(":") and r_uid == uid]
+
+
+def _caffeine_active(backend: str) -> bool:
+    if backend == "noctalia":
+        return any(who == "noctalia" and why == "Caffeine"
+                   for who, why, _m in _idle_inhibitors())
+    return _CAFFEINE_PROC is not None and _CAFFEINE_PROC.poll() is None
+
+
+def _caffeine_apply(on: bool, backend: str) -> str:
+    global _CAFFEINE_PROC
+    if backend == "noctalia":
+        rc, out = _noctalia_msg("caffeine-enable" if on else "caffeine-disable")
+        return "ok" if rc == 0 else (out or f"exit {rc}")[:300]
+    running = _CAFFEINE_PROC is not None and _CAFFEINE_PROC.poll() is None
+    if on and not running:
+        try:
+            _CAFFEINE_PROC = subprocess.Popen(
+                ["systemd-inhibit", "--what=idle", "--who=Panda Control",
+                 "--why=Caffeine", "--mode=block", "sleep", "infinity"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        except FileNotFoundError:
+            return "systemd-inhibit no encontrado"
+    elif not on and running:
+        _CAFFEINE_PROC.terminate()
+        _CAFFEINE_PROC = None
+    return "ok"
+
+
+def _caffeine_cancel_timer() -> None:
+    global _CAFFEINE_UNTIL, _CAFFEINE_TIMER
+    if _CAFFEINE_TIMER is not None:
+        _CAFFEINE_TIMER.cancel()
+    _CAFFEINE_TIMER = None
+    _CAFFEINE_UNTIL = None
+
+
+def _caffeine_expire(until: float) -> None:
+    with _CAFFEINE_LOCK:
+        if _CAFFEINE_UNTIL != until:  # se reprogramó o se apagó a mano
+            return
+        _caffeine_cancel_timer()
+        _caffeine_apply(False, _caffeine_backend())
+
+
+def caffeine_set(on: bool, minutes: int | None = None) -> str:
+    """Enciende (opcionalmente por `minutes`) o apaga caffeine."""
+    global _CAFFEINE_UNTIL, _CAFFEINE_TIMER
+    if minutes is not None and not 1 <= minutes <= _CAFFEINE_MAX_MIN:
+        return f"minutes fuera de rango (1-{_CAFFEINE_MAX_MIN})"
+    with _CAFFEINE_LOCK:
+        _caffeine_cancel_timer()
+        result = _caffeine_apply(on, _caffeine_backend())
+        if result == "ok" and on and minutes:
+            until = time.time() + minutes * 60
+            timer = threading.Timer(minutes * 60, _caffeine_expire, args=(until,))
+            timer.daemon = True
+            timer.start()
+            _CAFFEINE_UNTIL, _CAFFEINE_TIMER = until, timer
+        return result
+
+
+def caffeine_state() -> dict:
+    backend = _caffeine_backend()
+    with _CAFFEINE_LOCK:
+        active = _caffeine_active(backend)
+        if not active and _CAFFEINE_UNTIL is not None:
+            _caffeine_cancel_timer()  # lo apagaron desde el PC
+        until = _CAFFEINE_UNTIL
+    return {
+        "active": active,
+        "backend": backend,
+        "until": int(until) if until else None,
+        "remaining_s": max(0, int(until - time.time())) if until else None,
+    }
+
+
 # ─── Escenas (presets de monitores + audio) ───────────────────────────────────
 
 def scenes_list(cfg: dict) -> list[dict]:
@@ -2856,6 +2979,113 @@ def execute_app(name: str, cfg: dict) -> str:
             or f"exit {proc.returncode}")
 
 
+# ─── Íconos de apps (para la grilla de Apps) ──────────────────────────────────
+# El ícono sale de `icon` en [apps.X] (nombre de ícono o ruta absoluta) o del
+# Icon= del .desktop que aparezca en el cmd (p. ej. `uwsm app -- steam.desktop`).
+# Se busca en el tema de íconos de GTK del usuario y se entrega como PNG de
+# 128 px (los SVG se rasterizan con rsvg-convert).
+
+_ICON_PX = 128
+_ICON_CACHE: dict[str, bytes | None] = {}
+_ICON_LOCK = threading.Lock()
+
+
+def _desktop_icon(desktop_id: str) -> str | None:
+    home = Path.home()
+    for base in (home / ".local/share/applications", Path("/usr/share/applications")):
+        path = base / desktop_id
+        try:
+            for line in path.read_text(errors="replace").splitlines():
+                if line.startswith("Icon="):
+                    return line[5:].strip() or None
+        except OSError:
+            continue
+    return None
+
+
+def _gtk_icon_theme() -> str:
+    try:
+        for line in (Path.home() / ".config/gtk-3.0/settings.ini").read_text().splitlines():
+            key, _, val = line.partition("=")
+            if key.strip() == "gtk-icon-theme-name" and val.strip():
+                return val.strip()
+    except OSError:
+        pass
+    return "hicolor"
+
+
+def _icon_size_rank(path: Path) -> int:
+    """Menor = mejor: scalable primero, después el tamaño más cercano a 128."""
+    for part in path.parts:
+        if part == "scalable":
+            return 0
+        m = re.fullmatch(r"(\d+)x\d+(?:@\d+)?", part)
+        if m:
+            return 1 + abs(int(m.group(1)) - _ICON_PX)
+    return 999
+
+
+def _find_icon_file(name: str) -> Path | None:
+    if name.startswith("/"):
+        p = Path(name)
+        return p if p.is_file() else None
+    themes = [_gtk_icon_theme()]
+    if themes[0].endswith(("-Dark", "-Light")):
+        themes.append(themes[0].rsplit("-", 1)[0])  # Papirus-Dark -> Papirus
+    themes += ["breeze-dark", "breeze", "Adwaita", "hicolor"]
+    roots = [Path.home() / ".local/share/icons", Path("/usr/share/icons")]
+    for theme in dict.fromkeys(themes):
+        dirs = [root / theme for root in roots if (root / theme).is_dir()]
+        # Layout tamaño/apps (hicolor, Papirus) y apps/tamaño (breeze).
+        found = [p for d in dirs for pat in ("*/apps", "apps/*")
+                 for ext in ("svg", "png") for p in d.glob(f"{pat}/{name}.{ext}")]
+        if found:
+            return min(found, key=_icon_size_rank)
+    for ext in ("svg", "png"):
+        p = Path("/usr/share/pixmaps") / f"{name}.{ext}"
+        if p.is_file():
+            return p
+    return None
+
+
+def _app_icon_name(spec: dict) -> str | None:
+    icon = spec.get("icon")
+    if isinstance(icon, str) and icon.strip():
+        return icon.strip()
+    for arg in spec.get("cmd") or []:
+        if isinstance(arg, str) and arg.endswith(".desktop"):
+            return _desktop_icon(Path(arg).name)
+    return None
+
+
+def app_icon_png(name: str, cfg: dict) -> bytes | None:
+    spec = (cfg.get("apps") or {}).get(name)
+    if not isinstance(spec, dict):
+        return None
+    with _ICON_LOCK:
+        if name in _ICON_CACHE:
+            return _ICON_CACHE[name]
+    data = None
+    icon = _app_icon_name(spec)
+    path = _find_icon_file(icon) if icon else None
+    if path is not None:
+        try:
+            if path.suffix == ".svg":
+                proc = subprocess.run(
+                    ["rsvg-convert", "-w", str(_ICON_PX), "-h", str(_ICON_PX),
+                     "--keep-aspect-ratio", str(path)],
+                    capture_output=True, timeout=10,
+                )
+                data = proc.stdout if proc.returncode == 0 and proc.stdout else None
+            elif path.stat().st_size <= 2 * 1024 * 1024:
+                data = path.read_bytes()
+        except (OSError, subprocess.TimeoutExpired):
+            data = None
+    with _ICON_LOCK:
+        _ICON_CACHE[name] = data
+    return data
+
+
 def execute_apply_updates() -> str:
     """Arranca el oneshot pacman-update.service (instalado por bot-comandos-torre
     o por nosotros). El daemon NO espera a que termine — devuelve inmediatamente
@@ -3138,6 +3368,9 @@ def main() -> None:
             steam_close=steam_close,
             power_inhibit=power_inhibit,
             power_inhibit_state=power_inhibit_state,
+            caffeine_set=caffeine_set,
+            caffeine_state=caffeine_state,
+            app_icon_png=app_icon_png,
             mpris_players=mpris_players,
             mpris_status=mpris_status,
             mpris_action=mpris_action,

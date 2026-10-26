@@ -44,7 +44,7 @@ fun MediaTabScreen(app: PandaApp, onNavigate: (String) -> Unit) {
             PandaIcons.bolt, LocalPandaColors.current.magenta),
         MediaEntry("input", "Mouse/Teclado", "touchpad · clics · atajos · comandos",
             PandaIcons.mouse, LocalPandaColors.current.green),
-        MediaEntry("displays", "Pantallas", "monitores · DPMS",
+        MediaEntry("displays", "Pantallas", "monitores · DPMS · caffeine",
             PandaIcons.tv, LocalPandaColors.current.cyan),
         MediaEntry("apps", "Apps", "lanzar GUI vía systemd-run",
             PandaIcons.apps, LocalPandaColors.current.cyan),

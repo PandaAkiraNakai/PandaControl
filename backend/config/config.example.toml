@@ -136,12 +136,16 @@ devices = []
 [sudo]
 enabled = false
 
-# ─── Apps GUI (para Fase 3 — todavía no se lanzan vía HTTP) ──────────────
-# Listadas en /api/v1/apps. El lanzamiento llega en Fase 3 con confirm.
+# ─── Apps GUI ────────────────────────────────────────────────────────────
+# Listadas en /api/v1/apps; tap en la app = systemd-run --user -- <cmd>.
+# El ícono de la grilla sale del Icon= del .desktop que aparezca en `cmd`
+# (buscado en el tema de íconos de GTK), o de `icon` (nombre o ruta absoluta).
+# Sin ícono, la app usa el emoji inicial del label.
 
 # [apps.firefox]
-# cmd = ["firefox"]
-# label = "🦊 Firefox"
+# label = "Firefox"
+# cmd = ["uwsm", "app", "--", "firefox.desktop"]   # o ["gtk-launch", "firefox"]
+# icon = "firefox"                                  # opcional
 
 # ─── MPRIS / playerctl ───────────────────────────────────────────────────
 [mpris]

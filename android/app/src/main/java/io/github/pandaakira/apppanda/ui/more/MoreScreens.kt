@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -44,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -530,6 +532,17 @@ fun DisplaysScreen(app: PandaApp) {
         onResult = { scenes = it.scenes }, onError = {},
     ) { it.scenes() }
 
+    var caffeine by remember {
+        mutableStateOf<io.github.pandaakira.apppanda.data.models.CaffeineResponse?>(null)
+    }
+    var caffeineAt by remember { mutableStateOf(0L) }
+    var caffeineRefresh by remember { mutableStateOf(0) }
+    io.github.pandaakira.apppanda.ui.components.PollingEffect(
+        api = api, key = caffeineRefresh, intervalMs = 10_000,
+        onResult = { caffeine = it; caffeineAt = android.os.SystemClock.elapsedRealtime() },
+        onError = {},
+    ) { it.caffeine() }
+
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -543,6 +556,20 @@ fun DisplaysScreen(app: PandaApp) {
             else -> "?"
         }
         item { ScreenHeader("DISPLAYS :: $compositorLabel", "tap output = toggle on/off") }
+
+        caffeine?.let { c ->
+            item {
+                CaffeineCard(c, fetchedAt = caffeineAt, busy = exec.busy) { on, minutes ->
+                    val what = when {
+                        !on -> "Caffeine OFF"
+                        minutes == null -> "Caffeine ON"
+                        else -> "Caffeine ${caffeineLabel(minutes)}"
+                    }
+                    exec.run(what) { it.setCaffeine(on, minutes) }
+                    scope.launch { kotlinx.coroutines.delay(700); caffeineRefresh++ }
+                }
+            }
+        }
 
         // Escenas: presets que combinan outputs + foco + audio de un toque.
         if (scenes.isNotEmpty()) {
@@ -628,6 +655,82 @@ fun DisplaysScreen(app: PandaApp) {
             }
         }
         item { io.github.pandaakira.apppanda.ui.components.ActionResultBanner(exec) }
+    }
+}
+
+// ─── Caffeine (dentro de Pantallas) ──────────────────────────────────────────
+
+private val CAFFEINE_PRESETS = listOf(30, 60, 120, 240)
+
+private fun caffeineLabel(minutes: Int): String =
+    if (minutes < 60) "$minutes min" else "${minutes / 60} h"
+
+private fun remainingLabel(seconds: Long): String {
+    val min = (seconds + 59) / 60
+    return if (min < 60) "$min min" else "${min / 60} h ${"%02d".format(min % 60)} min"
+}
+
+/** Interruptor + duraciones. Encendido sin duración = hasta apagarlo. */
+@Composable
+private fun CaffeineCard(
+    c: io.github.pandaakira.apppanda.data.models.CaffeineResponse,
+    fetchedAt: Long,
+    busy: Boolean,
+    onSet: (on: Boolean, minutes: Int?) -> Unit,
+) {
+    val colors = LocalPandaColors.current
+    // Cuenta regresiva local entre polls (el backend manda remaining_s).
+    var now by remember { mutableStateOf(android.os.SystemClock.elapsedRealtime()) }
+    LaunchedEffect(fetchedAt, c.remainingS) {
+        while (c.remainingS != null) {
+            now = android.os.SystemClock.elapsedRealtime()
+            kotlinx.coroutines.delay(15_000)
+        }
+    }
+    val remaining = c.remainingS?.let { (it - (now - fetchedAt) / 1000).coerceAtLeast(0) }
+    val accent = if (c.active) colors.green else MaterialTheme.colorScheme.onSurfaceVariant
+
+    PandaCard(title = "CAFFEINE", accent = accent) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    if (c.active) "Activo" else "Inactivo",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    when {
+                        !c.active -> "el PC puede bloquearse por inactividad"
+                        remaining != null -> "se apaga en ${remainingLabel(remaining)}"
+                        else -> "sin límite de tiempo"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            androidx.compose.material3.Switch(
+                checked = c.active,
+                onCheckedChange = { onSet(it, null) },
+                enabled = !busy,
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+        Text(
+            "mantener despierto por",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(4.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            CAFFEINE_PRESETS.forEach { m ->
+                FilterChip(
+                    selected = false,
+                    onClick = { onSet(true, m) },
+                    enabled = !busy,
+                    label = { Text(caffeineLabel(m)) },
+                )
+            }
+        }
     }
 }
 
@@ -1194,6 +1297,17 @@ fun AppsScreen(app: PandaApp) {
         onResult = { apps = it.apps }, onError = { error = it },
     ) { it.apps() }
 
+    // Íconos reales (tema de íconos del PC), una sola descarga por app.
+    val icons = remember { androidx.compose.runtime.mutableStateMapOf<String, androidx.compose.ui.graphics.ImageBitmap>() }
+    LaunchedEffect(api, apps) {
+        val current = api ?: return@LaunchedEffect
+        apps.orEmpty().filter { it.icon && it.name !in icons }.forEach { a ->
+            runCatching { current.appIcon(a.name) }.getOrNull()
+                ?.let { b -> android.graphics.BitmapFactory.decodeByteArray(b, 0, b.size) }
+                ?.let { icons[a.name] = it.asImageBitmap() }
+        }
+    }
+
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp)) {
         ScreenHeader(
             "APPS :: GUI",
@@ -1207,14 +1321,14 @@ fun AppsScreen(app: PandaApp) {
             apps!!.isEmpty() -> EmptyState(
                 "Sin apps configuradas. Agrega [apps.firefox] etc. al config del backend.")
             else -> LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                columns = GridCells.Fixed(3),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.weight(1f),
             ) {
-                gridItems(apps!!) { a ->
-                    AppTile(a, enabled = !exec.busy) {
-                        exec.run("Launch ${a.name}") { it.launchApp(a.name) }
+                gridItems(apps!!, key = { it.name }) { a ->
+                    AppTile(a, icon = icons[a.name], enabled = !exec.busy) {
+                        exec.run("Abrir ${a.label}") { it.launchApp(a.name) }
                     }
                 }
             }
@@ -1226,15 +1340,17 @@ fun AppsScreen(app: PandaApp) {
 @Composable
 private fun AppTile(
     a: io.github.pandaakira.apppanda.data.models.AppEntry,
+    icon: androidx.compose.ui.graphics.ImageBitmap?,
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
-    // Extraer el primer code point completo (emojis son surrogate pairs en UTF-16
-    // y .first() devuelve solo el high surrogate, rompiendo el render).
+    // Sin ícono del PC se usa el emoji inicial del label (o ▶). Extraer el
+    // primer code point completo (emojis son surrogate pairs en UTF-16 y
+    // .first() devuelve solo el high surrogate, rompiendo el render).
     // label puede venir vacío si el config.toml tiene un label="" mal
     // tipeado — codePointAt(0) sobre "" tira StringIndexOutOfBoundsException
     // y tumbaba toda la pantalla.
-    val (icon, rest) = if (a.label.isEmpty()) {
+    val (glyph, rest) = if (a.label.isEmpty()) {
         "▶" to a.name
     } else {
         val firstCp = a.label.codePointAt(0)
@@ -1246,30 +1362,43 @@ private fun AppTile(
             "▶" to a.label
         }
     }
+    val shape = RoundedCornerShape(LocalPandaShapes.current.corner)
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .height(110.dp)
-            .clip(RoundedCornerShape(LocalPandaShapes.current.corner))
+            .height(104.dp)
+            .clip(shape)
             .background(MaterialTheme.colorScheme.surface)
-            .border(LocalPandaShapes.current.border, LocalPandaColors.current.cyan.copy(alpha = 0.5f), RoundedCornerShape(LocalPandaShapes.current.corner))
+            .border(LocalPandaShapes.current.border,
+                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f), shape)
             .clickable(enabled = enabled) { onClick() }
-            .padding(12.dp),
+            .padding(horizontal = 8.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween,
     ) {
-        // fontFamily explícitamente Default (null) para que el sistema
-        // resuelva el fallback a Noto Color Emoji para los glyphs no-ASCII.
-        Text(
-            icon,
-            style = MaterialTheme.typography.headlineMedium.copy(
-                fontFamily = androidx.compose.ui.text.font.FontFamily.Default,
-            ),
-        )
+        if (icon != null) {
+            androidx.compose.foundation.Image(
+                bitmap = icon,
+                contentDescription = null,
+                modifier = Modifier.size(44.dp),
+            )
+        } else {
+            // fontFamily explícitamente Default (null) para que el sistema
+            // resuelva el fallback a Noto Color Emoji para los glyphs no-ASCII.
+            Text(
+                glyph,
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Default,
+                ),
+            )
+        }
         Text(
             rest.ifBlank { a.name },
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 2,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
     }
 }

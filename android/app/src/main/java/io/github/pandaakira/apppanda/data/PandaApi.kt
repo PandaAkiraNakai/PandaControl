@@ -22,6 +22,8 @@ import io.github.pandaakira.apppanda.data.models.GpusResponse
 import io.github.pandaakira.apppanda.data.models.HealthResponse
 import io.github.pandaakira.apppanda.data.models.LogsResponse
 import io.github.pandaakira.apppanda.data.models.CalEventReq
+import io.github.pandaakira.apppanda.data.models.CaffeineReq
+import io.github.pandaakira.apppanda.data.models.CaffeineResponse
 import io.github.pandaakira.apppanda.data.models.CalendarResponse
 import io.github.pandaakira.apppanda.data.models.DockerLogsResponse
 import io.github.pandaakira.apppanda.data.models.DockerResponse
@@ -181,6 +183,9 @@ class PandaApi(
     suspend fun inhibitState(): InhibitResponse =
         client.get(url("/api/v1/inhibit")).body()
 
+    suspend fun caffeine(): CaffeineResponse =
+        client.get(url("/api/v1/caffeine")).body()
+
     suspend fun sessionState(): SessionStateResponse =
         client.get(url("/api/v1/session")).body()
 
@@ -304,6 +309,9 @@ class PandaApi(
         action("/api/v1/calendario/$id/delete")
 
     /** Baja los bytes de una imagen de fondo de tema desde la carpeta del PC. */
+    suspend fun appIcon(name: String): ByteArray =
+        client.get(url("/api/v1/apps/$name/icon")).body()
+
     suspend fun themeImage(name: String): ByteArray {
         val encoded = java.net.URLEncoder.encode(name, "UTF-8")
         return client.get(url("/api/v1/themes/image?name=$encoded")).body()
@@ -429,6 +437,11 @@ class PandaApi(
 
     suspend fun setInhibit(on: Boolean) =
         action("/api/v1/inhibit/${if (on) "on" else "off"}")
+
+    /** Enciende caffeine (por `minutes`, o hasta apagarlo si es null) o lo apaga. */
+    suspend fun setCaffeine(on: Boolean, minutes: Int? = null) =
+        if (on) action("/api/v1/caffeine/on", body = CaffeineReq(minutes))
+        else action("/api/v1/caffeine/off")
 
     suspend fun terminalRun(cmd: String): TerminalResponse =
         client.post(url("/api/v1/terminal/run")) {

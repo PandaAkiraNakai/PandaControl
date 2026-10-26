@@ -65,8 +65,10 @@ private fun tabIcon(dest: Dest): ImageVector = when (dest) {
     Dest.Sistema -> PandaIcons.dns
 }
 
+// Agenda salió de la barra (2026-10-25); su ruta sigue viva para los
+// recordatorios mientras se decide qué ocupa ese lugar.
 private val tabs =
-    listOf(Dest.Home, Dest.Monitor, Dest.Calendario, Dest.Control, Dest.Sistema)
+    listOf(Dest.Home, Dest.Monitor, Dest.Control, Dest.Sistema)
 
 @Composable
 fun AppNav(app: PandaApp, theme: PandaTheme) {

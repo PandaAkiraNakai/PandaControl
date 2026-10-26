@@ -206,6 +206,18 @@ data class RunningGameResponse(val running: RunningGame? = null)
 @Serializable
 data class InhibitResponse(val active: Boolean = false)
 
+/** Caffeine (inhibidor de idle). `remainingS` = null → sin temporizador. */
+@Serializable
+data class CaffeineResponse(
+    val active: Boolean = false,
+    val backend: String = "",
+    val until: Long? = null,
+    @SerialName("remaining_s") val remainingS: Long? = null,
+)
+
+@Serializable
+data class CaffeineReq(val minutes: Int? = null)
+
 /** Sesión gráfica del PC: "login" (pantalla de inicio de sesión), "locked" o "unlocked". */
 @Serializable
 data class SessionStateResponse(
@@ -311,6 +323,8 @@ data class AppEntry(
     val name: String,
     val label: String,
     val cmd: List<String> = emptyList(),
+    /** El backend tiene ícono para esta app en /api/v1/apps/{name}/icon. */
+    val icon: Boolean = false,
 )
 
 @Serializable

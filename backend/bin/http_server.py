@@ -391,6 +391,11 @@ class _Handler(BaseHTTPRequestHandler):
             body = {"running": self.api.steam_running(api.ctx.cfg)}
         elif path == "/api/v1/inhibit":
             body = {"active": self.api.power_inhibit_state()}
+        elif path == "/api/v1/caffeine":
+            body = self.api.caffeine_state()
+        elif path.startswith("/api/v1/apps/") and path.endswith("/icon"):
+            self._app_icon(path[len("/api/v1/apps/"):-len("/icon")])
+            return
         elif path == "/api/v1/session":
             body = self.api.session_state()
         elif path == "/api/v1/net/wol":
@@ -630,6 +635,21 @@ class _Handler(BaseHTTPRequestHandler):
                 result = api.power_inhibit(action == "on")
                 body = {"action": action, "result": result,
                         "active": api.power_inhibit_state()}
+            elif path.startswith("/api/v1/caffeine/"):
+                # on: {minutes?: int} (sin minutes = hasta apagarlo); off: {}
+                action = path[len("/api/v1/caffeine/"):]
+                if action not in ("on", "off"):
+                    self._err(400, "action must be on|off")
+                    self._audit(path, 400)
+                    return
+                minutes = self._read_json_body().get("minutes")
+                if minutes is not None and (isinstance(minutes, bool)
+                                            or not isinstance(minutes, int)):
+                    self._err(400, "minutes debe ser entero")
+                    self._audit(path, 400)
+                    return
+                result = api.caffeine_set(action == "on", minutes or None)
+                body = {"action": action, "result": result, **api.caffeine_state()}
             elif path == "/api/v1/terminal/run":
                 data = self._read_json_body()
                 body = api.terminal_run(api.ctx.cfg, data.get("cmd", ""))
@@ -1195,14 +1215,35 @@ class _Handler(BaseHTTPRequestHandler):
         }
 
     def _apps(self) -> dict:
-        apps = self.api.ctx.cfg.get("apps", {})
+        cfg = self.api.ctx.cfg
+        apps = cfg.get("apps", {})
         return {
             "apps": [
                 {"name": name, "label": meta.get("label", name),
-                 "cmd": meta.get("cmd", [])}
+                 "cmd": meta.get("cmd", []),
+                 "icon": self.api.app_icon_png(name, cfg) is not None}
                 for name, meta in apps.items()
             ],
         }
+
+    def _app_icon(self, name: str) -> None:
+        """PNG del ícono de una app configurada en [apps.X]."""
+        route = "/api/v1/apps/icon"
+        data = self.api.app_icon_png(name, self.api.ctx.cfg)
+        if data is None:
+            self._err(404, "sin ícono")
+            self._audit(route, 404)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "image/png")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "max-age=86400")
+        self.end_headers()
+        try:
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        self._audit(route, 200)
 
     def _updates(self) -> dict:
         cfg = self.api.ctx.cfg.get("updates", {})
