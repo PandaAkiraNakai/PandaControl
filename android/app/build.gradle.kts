@@ -21,8 +21,8 @@ android {
         applicationId = "io.github.pandaakira.apppanda"
         minSdk = 26
         targetSdk = 35
-        versionCode = 63
-        versionName = "3.8"
+        versionCode = 64
+        versionName = "3.9"
     }
 
     signingConfigs {
@@ -38,7 +38,10 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8: quita el código y recursos que no se usan (sobre todo
+            // material-icons-extended) → APK mucho más chico y arranque más rápido.
+            isMinifyEnabled = true
+            isShrinkResources = true
             if (keystoreProps.isNotEmpty()) {
                 signingConfig = signingConfigs.getByName("release")
             }
@@ -83,6 +86,9 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.biometric)
+    // Instala los Baseline Profiles que traen Compose y compañía aunque la app
+    // no venga de Play (Obtainium/adb): menos JIT al abrir y al hacer scroll.
+    implementation(libs.androidx.profileinstaller)
 
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.cio)

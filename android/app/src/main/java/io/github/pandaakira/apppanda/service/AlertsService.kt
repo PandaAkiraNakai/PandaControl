@@ -49,6 +49,7 @@ class AlertsService : Service() {
         const val CHANNEL_SUDO = "panda-sudo-urgent"
         const val ONGOING_ID = 1
         const val SUDO_NOTIF_BASE = 9000
+        private const val MAX_ANNOUNCED_SUDO = 200
         const val ACTION_START = "io.github.pandaakira.apppanda.START"
         const val ACTION_STOP = "io.github.pandaakira.apppanda.STOP"
 
@@ -68,6 +69,9 @@ class AlertsService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var collectorJob: Job? = null
+
+    /** Claves de solicitudes sudo ya notificadas (orden de llegada). */
+    private val announcedSudo = LinkedHashSet<String>()
     private var nextNotifId = 100
     private var activeSudoRingtone: Ringtone? = null
 
@@ -215,10 +219,14 @@ class AlertsService : Service() {
         val notifId = sudoNotifId(req.key)
 
         // Encolar en el repo: AppNav observa esa cola y muestra un dialog
-        // modal dentro de la app. Si ya estaba (el backend reenvía las
-        // pendientes al reconectar el SSE), no volver a sonar ni vibrar.
+        // modal dentro de la app (AppNav también encola, por eso no basta con
+        // el resultado de addPendingSudo). Si ya se avisó de esta solicitud (el
+        // backend reenvía las pendientes al reconectar el SSE), no volver a
+        // sonar ni vibrar.
         val app = applicationContext as PandaApp
-        if (!app.repository.addPendingSudo(req)) return
+        app.repository.addPendingSudo(req)
+        if (!announcedSudo.add(req.key)) return
+        if (announcedSudo.size > MAX_ANNOUNCED_SUDO) announcedSudo.remove(announcedSudo.first())
 
         // PendingIntent simple: abre MainActivity. El dialog ya está pendiente
         // en el StateFlow del repo, se mostrará al composer la UI.

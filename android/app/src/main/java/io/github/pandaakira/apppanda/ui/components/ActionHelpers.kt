@@ -11,8 +11,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import io.github.pandaakira.apppanda.data.PandaApi
 import io.github.pandaakira.apppanda.data.models.ActionResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -28,6 +32,9 @@ import kotlinx.coroutines.withContext
  * disparar hasta que la pantalla se recreaba (cambiar de tab y volver).
  * [key] fuerza un refetch inmediato (cambiar de filtro, un botón
  * "Refrescar", etc.) sin esperar al próximo tick.
+ *
+ * Solo sondea con la app visible (STARTED): en segundo plano se pausa, para
+ * no gastar batería ni datos por Tailscale, y al volver pide al tiro.
  */
 @Composable
 fun <T> PollingEffect(
@@ -38,16 +45,35 @@ fun <T> PollingEffect(
     onError: (String?) -> Unit,
     fetch: suspend (PandaApi) -> T,
 ) {
-    LaunchedEffect(api, key) {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(api, key, lifecycle) {
         val current = api ?: return@LaunchedEffect
-        while (true) {
-            try {
-                onResult(withContext(Dispatchers.IO) { fetch(current) })
-                onError(null)
-            } catch (e: Exception) {
-                onError(e.message ?: e::class.simpleName)
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                try {
+                    onResult(withContext(Dispatchers.IO) { fetch(current) })
+                    onError(null)
+                } catch (e: CancellationException) {
+                    throw e  // pausa o salida de pantalla, no un error de red
+                } catch (e: Exception) {
+                    onError(e.message ?: e::class.simpleName)
+                }
+                delay(intervalMs)
             }
-            delay(intervalMs)
+        }
+    }
+}
+
+/** Llama [onTick] cada [intervalMs] mientras la app esté visible (STARTED). */
+@Composable
+fun TickerEffect(key: Any?, intervalMs: Long, onTick: () -> Unit) {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(key, lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                delay(intervalMs)
+                onTick()
+            }
         }
     }
 }

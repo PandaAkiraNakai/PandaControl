@@ -84,12 +84,8 @@ fun DockerScreen(app: PandaApp) {
     }
 
     // Auto-refresh cada 5 s mientras la pantalla esté visible.
-    LaunchedEffect(api) {
-        if (api == null) return@LaunchedEffect
-        while (true) {
-            kotlinx.coroutines.delay(5_000)
-            refresh++
-        }
+    io.github.pandaakira.apppanda.ui.components.TickerEffect(api, 5_000) {
+        if (api != null) refresh++
     }
 
     LazyColumn(

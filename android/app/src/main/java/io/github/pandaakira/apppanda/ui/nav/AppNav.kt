@@ -9,6 +9,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -174,6 +175,14 @@ fun AppNav(app: PandaApp, theme: PandaTheme) {
                 )
             }
         }
+    }
+
+    // Las solicitudes sudo se encolan también desde la UI, no solo desde
+    // AlertsService: sin "Notificaciones push" el servicio no corre y el
+    // dialog nunca aparecía (#53). addPendingSudo deduplica por clave, así que
+    // con el servicio activo no se duplican.
+    LaunchedEffect(Unit) {
+        app.repository.sudoRequests.collect { app.repository.addPendingSudo(it) }
     }
 
     // Overlay de sudo: vive a nivel del AppNav y se superpone sobre lo que sea
