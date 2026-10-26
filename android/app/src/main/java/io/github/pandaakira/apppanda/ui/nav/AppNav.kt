@@ -51,6 +51,7 @@ private sealed class Dest(
     data object Home : Dest("home", "Inicio")
     data object Monitor : Dest("monitor", "Monitor")
     data object Calendario : Dest("calendario", "Agenda")
+    data object Rapido : Dest("rapido", "Rápido")
     data object Control : Dest("control", "Control")
     data object Sistema : Dest("sistema", "Sistema")
 }
@@ -62,14 +63,15 @@ private fun tabIcon(dest: Dest): ImageVector = when (dest) {
     Dest.Home -> PandaIcons.dashboard
     Dest.Monitor -> PandaIcons.analytics
     Dest.Calendario -> PandaIcons.calendarMonth
+    Dest.Rapido -> PandaIcons.bolt
     Dest.Control -> PandaIcons.settingsRemote
     Dest.Sistema -> PandaIcons.dns
 }
 
-// Agenda salió de la barra (2026-10-25); su ruta sigue viva para los
-// recordatorios mientras se decide qué ocupa ese lugar.
+// Rápido ocupa el lugar de Agenda (fuera de la barra desde 2026-10-25; su
+// ruta sigue viva para los recordatorios).
 private val tabs =
-    listOf(Dest.Home, Dest.Monitor, Dest.Control, Dest.Sistema)
+    listOf(Dest.Home, Dest.Monitor, Dest.Rapido, Dest.Control, Dest.Sistema)
 
 @Composable
 fun AppNav(app: PandaApp, theme: PandaTheme) {
@@ -130,6 +132,10 @@ fun AppNav(app: PandaApp, theme: PandaTheme) {
             composable(Dest.Monitor.route) { MonitorScreen(app = app) }
             composable(Dest.Calendario.route) {
                 io.github.pandaakira.apppanda.ui.calendar.CalendarScreen(app = app)
+            }
+            composable(Dest.Rapido.route) {
+                io.github.pandaakira.apppanda.ui.quick.QuickScreen(
+                    app = app, onNavigate = { route -> navController.navigate(route) })
             }
             composable(Dest.Control.route) {
                 MediaTabScreen(app = app, onNavigate = { route -> navController.navigate(route) })
