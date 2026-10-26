@@ -244,6 +244,13 @@ dir = "~/.config/apppanda-backend/temas"
 # compositor (p. ej. DP-1, HDMI-A-1); en Hyprland salen de
 # `hyprctl monitors all`, en niri de `niri msg outputs`.
 #
+# Hyprland: el backend guarda las salidas que enciende/apaga (Pantallas y
+# escenas) en $XDG_RUNTIME_DIR/apppanda/hyprland.lua. Para que un
+# `hyprctl reload` no las devuelva a lo que dice el config, cárgalo al final de
+# tus reglas de monitores:
+#   local f = (os.getenv("XDG_RUNTIME_DIR") or "") .. "/apppanda/hyprland.lua"
+#   if io.open(f, "r") then dofile(f) end
+#
 # [scenes.trabajo]
 # label = "Trabajo"
 # outputs_on = ["DP-1", "DP-2"]

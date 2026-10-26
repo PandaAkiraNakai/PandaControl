@@ -1988,8 +1988,46 @@ def _hypr_set_output(name: str, on: bool) -> str:
             lua = f'hl.monitor({{ output = "{name}", disabled = false }})'
     rc, _stdout, stderr = _hypr_eval(lua)
     if rc == 0:
+        if on:
+            # Con la geometría ya aplicada, la regla persistida la fija tal cual.
+            geo = _hypr_geometry(name)
+            if geo:
+                lua = (f'hl.monitor({{ output = "{name}", mode = "{geo["mode"]}", '
+                       f'position = "{geo["position"]}", scale = "{geo["scale"]}", '
+                       f'disabled = false }})')
+        _hypr_persist_rule(name, lua)
         return "ok"
     return (stderr or f"exit {rc}")[:300]
+
+
+def _hypr_overrides_path() -> Path:
+    return Path(f"/run/user/{os.getuid()}") / "apppanda" / "hyprland.lua"
+
+
+def _hypr_persist_rule(name: str, lua: str) -> None:
+    """Guarda la última regla aplicada a `name` en $XDG_RUNTIME_DIR/apppanda/
+    hyprland.lua (una línea por output). `hyprctl eval` solo cambia el estado
+    en caliente: cualquier `hyprctl reload` (p. ej. el que lanza un cambio de
+    paleta al aparecer un monitor nuevo) vuelve a aplicar las reglas del config
+    y deshace lo que hizo la app; la TV se apagaba sola a los 3 s de encenderla.
+    Si el config de Hyprland hace dofile de este archivo al final de sus reglas
+    de monitores, el estado elegido desde la app sobrevive a los reloads. Vive
+    en /run: al reiniciar desaparece y manda el config."""
+    path = _hypr_overrides_path()
+    marker = f'output = "{name}"'
+    try:
+        lines = path.read_text().splitlines()
+    except OSError:
+        lines = []
+    lines = [ln for ln in lines if marker not in ln and ln.strip()]
+    lines.append(lua)
+    try:
+        path.parent.mkdir(mode=0o700, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text("\n".join(lines) + "\n")
+        tmp.replace(path)
+    except OSError as e:
+        print(f"hypr: could not persist {path}: {e}", file=sys.stderr)
 
 
 def _hypr_dpms(on: bool) -> str:
