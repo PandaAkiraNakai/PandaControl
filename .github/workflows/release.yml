@@ -14,6 +14,13 @@ on:
 permissions:
   contents: write
 
+# Un release a la vez: un push mientras otro compila espera en fila y, como el
+# tag ya existe al terminar el primero, el job check corta (antes dos pushes
+# seguidos compilaban y publicaban la misma versión en paralelo).
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 # Las actions JS corren en Node 24 (Node 20 quedo deprecado).
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
