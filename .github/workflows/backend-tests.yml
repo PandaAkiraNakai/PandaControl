@@ -1,0 +1,40 @@
+name: Tests del backend
+
+# Corre los tests del backend (unittest, solo stdlib) en cada push o PR que
+# toque backend/. Mismo Python que la torre y la laptop (CachyOS: 3.14).
+# Localmente: cd backend && python3 -m unittest discover -s . -p 'test_*.py' -t .
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-tests.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Las actions JS corren en Node 24 (Node 20 quedo deprecado).
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Compilar todos los .py
+        run: python -m py_compile backend/bin/*.py
+
+      - name: unittest
+        working-directory: backend
+        run: python -m unittest discover -s . -p 'test_*.py' -t . -v
